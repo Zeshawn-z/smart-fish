@@ -1,0 +1,6 @@
+# Compiled binary
+back_end
+
+# Go workspace file
+go.work
+go.work.sum
