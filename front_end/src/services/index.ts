@@ -1,0 +1,8 @@
+export { AuthService } from './AuthService'
+export { RegionService } from './RegionService'
+export { FishingSpotService } from './FishingSpotService'
+export { DeviceService } from './DeviceService'
+export { ReminderService } from './ReminderService'
+export { NoticeService } from './NoticeService'
+export { SummaryService } from './SummaryService'
+export { SuggestionService } from './SuggestionService'

@@ -1,0 +1,291 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main              # main 分支推送时自动触发
+  workflow_dispatch:       # 支持手动触发
+
+permissions:
+  contents: write          # 创建 tag 和 Release 需要写权限
+
+jobs:
+  # ===== 第一步：自动打 tag =====
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.bump.outputs.new_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # 需要完整历史来读取已有 tag
+
+      - name: Auto bump version tag
+        id: bump
+        run: |
+          # 获取最新的 tag（格式 v*.*.*）
+          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="v1.0.0"
+          else
+            # 提取 major.minor.patch 并递增 patch
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            PATCH=$((PATCH + 1))
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          echo "Latest tag: ${LATEST_TAG:-none}"
+          echo "New tag: $NEW_TAG"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+          # 创建并推送新 tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+
+  # ===== 第二步：构建前端 =====
+  build-frontend:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: front_end/package-lock.json
+
+      - name: Install dependencies
+        working-directory: front_end
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: front_end
+        run: npx vue-tsc -b && npx vite build
+
+      - name: Package frontend dist
+        run: |
+          cd front_end
+          tar czf ../smart-fish-frontend-dist.tar.gz -C dist .
+          cd ..
+          zip -rj smart-fish-frontend-dist.zip front_end/dist/
+
+      - name: Upload frontend dist (for combo build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: front_end/dist/
+
+      - name: Upload frontend archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-archives
+          path: |
+            smart-fish-frontend-dist.tar.gz
+            smart-fish-frontend-dist.zip
+
+  # ===== 第三步：构建纯后端（不含前端） =====
+  build-backend-only:
+    needs: [tag, build-frontend]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+          - goos: linux
+            goarch: arm64
+            suffix: ''
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+          - goos: darwin
+            goarch: arm64
+            suffix: ''
+          - goos: windows
+            goarch: amd64
+            suffix: '.exe'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.0'
+          cache-dependency-path: back_end/go.sum
+
+      - name: Build backend-only binary
+        working-directory: back_end
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          BINARY_NAME="smart-fish-server-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
+          go build -tags backend_only -ldflags="-s -w" -o "../$BINARY_NAME" .
+          echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}
+          path: ${{ env.BINARY_NAME }}
+
+  # ===== 第四步：构建组合版（前端 + 后端一体） =====
+  build-combo:
+    needs: [tag, build-frontend]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+          - goos: linux
+            goarch: arm64
+            suffix: ''
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+          - goos: darwin
+            goarch: arm64
+            suffix: ''
+          - goos: windows
+            goarch: amd64
+            suffix: '.exe'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: back_end/dist
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.0'
+          cache-dependency-path: back_end/go.sum
+
+      - name: Build combo binary
+        working-directory: back_end
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          BINARY_NAME="smart-fish-combo-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
+          go build -ldflags="-s -w" -o "../$BINARY_NAME" .
+          echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}
+          path: ${{ env.BINARY_NAME }}
+
+  # ===== 第五步：创建 Release =====
+  release:
+    needs: [tag, build-frontend, build-backend-only, build-combo]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lhR artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.new_tag }}
+          name: Release ${{ needs.tag.outputs.new_tag }}
+          body: |
+            ## 🐟 智钓蓝海 - ${{ needs.tag.outputs.new_tag }}
+
+            ---
+
+            ### 📦 下载说明
+
+            本次发布提供 **三类产物**，按需选择：
+
+            #### 🎯 推荐：组合版（前端 + 后端一体，单文件运行）
+            
+            | 文件 | 系统 | 架构 |
+            |------|------|------|
+            | `smart-fish-combo-linux-amd64` | Linux | x86_64 |
+            | `smart-fish-combo-linux-arm64` | Linux | ARM64 |
+            | `smart-fish-combo-darwin-amd64` | macOS | Intel |
+            | `smart-fish-combo-darwin-arm64` | macOS | Apple Silicon |
+            | `smart-fish-combo-windows-amd64.exe` | Windows | x86_64 |
+
+            #### 🔧 纯后端 API 服务（需自行部署前端）
+
+            | 文件 | 系统 | 架构 |
+            |------|------|------|
+            | `smart-fish-server-linux-amd64` | Linux | x86_64 |
+            | `smart-fish-server-linux-arm64` | Linux | ARM64 |
+            | `smart-fish-server-darwin-amd64` | macOS | Intel |
+            | `smart-fish-server-darwin-arm64` | macOS | Apple Silicon |
+            | `smart-fish-server-windows-amd64.exe` | Windows | x86_64 |
+
+            #### 🎨 前端产物（静态文件，可自行用 Nginx 等部署）
+            
+            | 文件 | 说明 |
+            |------|------|
+            | `smart-fish-frontend-dist.tar.gz` | tar.gz 压缩包 |
+            | `smart-fish-frontend-dist.zip` | zip 压缩包 |
+
+            ---
+
+            ### 🚀 快速开始（组合版）
+
+            **前置条件**：仅需 MySQL 5.7+
+
+            ```bash
+            # 1. 创建配置文件 .env（放在可执行文件同级目录）
+            DB_HOST=127.0.0.1
+            DB_PORT=3306
+            DB_USER=root
+            DB_PASSWORD=your_password
+            DB_NAME=smart_fish
+            JWT_SECRET=your-jwt-secret
+            SERVER_PORT=8080
+            GIN_MODE=release
+            ```
+
+            ```bash
+            # 2. 运行（首次加 --seed 填充示例数据）
+            chmod +x smart-fish-combo-*
+            ./smart-fish-combo-linux-amd64 --seed
+            ```
+
+            ```bash
+            # 3. 浏览器打开
+            http://localhost:8080
+            ```
+
+            ### 🔧 纯后端部署
+
+            如果选择 `smart-fish-server-*`，需另行部署前端：
+            1. 解压 `smart-fish-frontend-dist.zip` 到 Nginx 等 Web 服务器
+            2. 配置反向代理，将 `/api/*` 和 `/auth/*` 转发到后端端口
+            3. 后端仅提供 API 服务，默认端口 8080
+          files: artifacts/*
+          draft: false
+          prerelease: false

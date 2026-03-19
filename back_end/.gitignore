@@ -1,6 +1,15 @@
 # Compiled binary
 back_end
+smart-fish
+smart-fish-server
 
 # Go workspace file
 go.work
 go.work.sum
+
+# Environment
+.env
+
+# Embedded frontend dist (built by CI or manually)
+dist/*
+!dist/.gitkeep
