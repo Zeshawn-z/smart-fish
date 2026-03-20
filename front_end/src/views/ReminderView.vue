@@ -2,19 +2,30 @@
   <div class="info-center">
     <!-- 页面标题 -->
     <div class="page-header">
-      <div class="title-row">
-        <span class="title-accent"></span>
-        <h2 class="page-title">信息中心</h2>
-        <el-button text @click="refreshData" class="refresh-btn">
-          <el-icon :class="{ spinning: isRefreshing }"><Refresh /></el-icon>
-        </el-button>
+      <div class="header-left">
+        <div class="title-icon">
+          <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 3C8 3 3 7 3 12c0 3 1.5 5.5 4 7.5V24l4-2.5c1 .3 2 .5 3 .5 6 0 11-4 11-9S20 3 14 3z" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="9" cy="12" r="1.2" fill="currentColor"/>
+            <circle cx="14" cy="12" r="1.2" fill="currentColor"/>
+            <circle cx="19" cy="12" r="1.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="title-text">
+          <h2 class="page-title">信息中心</h2>
+          <p class="page-desc">
+            <span v-if="reminderStore.unresolvedCount > 0" class="stat-warn">
+              {{ reminderStore.unresolvedCount }} 条待处理
+            </span>
+            <span v-else>全部已处理</span>
+            <span class="stat-sep">·</span>
+            <span>提醒、通知与垂钓建议</span>
+          </p>
+        </div>
       </div>
-      <div class="header-stats">
-        <span v-if="reminderStore.unresolvedCount > 0" class="stat-item warn">
-          {{ reminderStore.unresolvedCount }} 条待处理提醒
-        </span>
-        <span v-else class="stat-item">暂无待处理提醒</span>
-      </div>
+      <el-button text @click="refreshData" class="refresh-btn">
+        <el-icon :class="{ spinning: isRefreshing }"><Refresh /></el-icon>
+      </el-button>
     </div>
 
     <!-- 主体内容 -->
@@ -111,32 +122,67 @@ onBeforeUnmount(() => {
 
 /* ===== 标题区 ===== */
 .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #f0f0f0;
+  padding: 18px 22px;
 }
-.title-row {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
 }
-.title-accent {
-  display: block;
-  width: 4px;
-  height: 22px;
-  border-radius: 2px;
-  background: #2b6e3f;
+.title-icon {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef6fb;
+  border-radius: 10px;
+  color: #2196f3;
   flex-shrink: 0;
 }
+.title-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .page-title {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: #1d2129;
   margin: 0;
+  line-height: 1.3;
+}
+.page-desc {
+  font-size: 12.5px;
+  color: #a0a4ad;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.stat-warn {
+  color: #cf7a30;
+  font-weight: 500;
+}
+.stat-sep {
+  margin: 0 6px;
+  color: #d9dbe0;
 }
 .refresh-btn {
-  margin-left: auto;
-  color: #909399;
+  color: #b0b3ba;
   font-size: 17px;
-  padding: 6px;
+  padding: 8px;
 }
 .refresh-btn:hover {
   color: #606266;
@@ -147,17 +193,6 @@ onBeforeUnmount(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-.header-stats {
-  margin-top: 6px;
-  padding-left: 14px;
-}
-.stat-item {
-  font-size: 13px;
-  color: #a0a4ad;
-}
-.stat-item.warn {
-  color: #cf7a30;
 }
 
 /* ===== 主面板 ===== */
@@ -208,14 +243,26 @@ onBeforeUnmount(() => {
   .info-center {
     padding: 14px;
   }
-  .main-panel {
-    padding: 14px 12px;
+  .page-header {
+    padding: 14px 16px;
+  }
+  .title-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+  .title-icon svg {
+    width: 18px;
+    height: 18px;
   }
   .page-title {
-    font-size: 18px;
+    font-size: 16px;
   }
-  .title-accent {
-    height: 18px;
+  .page-desc {
+    font-size: 11.5px;
+  }
+  .main-panel {
+    padding: 14px 12px;
   }
 }
 </style>

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Notice, PaginatedResponse } from '@/types'
+import type { Notice } from '@/types'
 import { NoticeService } from '@/services'
 
 export const useNoticeStore = defineStore('notice', () => {
@@ -17,10 +17,10 @@ export const useNoticeStore = defineStore('notice', () => {
   }) {
     isLoading.value = true
     try {
-      const data: PaginatedResponse<Notice> = await NoticeService.list(params)
-      notices.value = data.results
-      total.value = data.total
-      page.value = data.page
+      const res = await NoticeService.list(params)
+      notices.value = res.data
+      total.value = res.total
+      page.value = params?.page ?? 1
     } finally {
       isLoading.value = false
     }

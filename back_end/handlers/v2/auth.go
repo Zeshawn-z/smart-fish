@@ -1,4 +1,4 @@
-package handlers
+package v2
 
 import (
 	"net/http"
@@ -103,7 +103,7 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
-		"user":          user.ToResponse(),
+		"user":          user.ToResponseWithAvatar(getUserAvatar(user.ID)),
 	})
 }
 
@@ -144,7 +144,7 @@ func RefreshToken(c *gin.Context) {
 	})
 }
 
-// GetMe 获取当前用户信息
+// GetMe 获取当前用户信息（含头像）
 func GetMe(c *gin.Context) {
 	userID, _ := c.Get("userID")
 
@@ -154,7 +154,9 @@ func GetMe(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, user.ToResponse())
+	// 查找头像
+	avatarURL := getUserAvatar(user.ID)
+	c.JSON(http.StatusOK, user.ToResponseWithAvatar(avatarURL))
 }
 
 // UpdateMe 更新当前用户信息
@@ -219,4 +221,13 @@ func UpdatePassword(c *gin.Context) {
 
 	database.DB.Model(&user).Update("password_hash", string(hash))
 	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+}
+
+// getUserAvatar 从 Image 表查询用户头像 URL
+func getUserAvatar(userID uint) *string {
+	var avatar models.Image
+	if err := database.DB.Where("user_id = ? AND is_avatar = ? AND is_deleted = ?", userID, true, false).First(&avatar).Error; err == nil {
+		return &avatar.ImageURL
+	}
+	return nil
 }

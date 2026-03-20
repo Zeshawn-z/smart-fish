@@ -9,33 +9,33 @@ function hashPassword(password: string): string {
 
 export const AuthService = {
   async login(input: LoginInput): Promise<TokenPair> {
-    return httpPost<TokenPair>('/api/auth/login', {
+    return httpPost<TokenPair>('/api/v2/auth/login', {
       username: input.username,
       password: hashPassword(input.password)
     })
   },
 
   async register(input: RegisterInput): Promise<{ message: string; user: User }> {
-    return httpPost('/api/auth/register', {
+    return httpPost('/api/v2/auth/register', {
       ...input,
       password: hashPassword(input.password)
     })
   },
 
   async refreshToken(refreshToken: string): Promise<{ access_token: string }> {
-    return httpPost('/api/auth/refresh', { refresh_token: refreshToken })
+    return httpPost('/api/v2/auth/refresh', { refresh_token: refreshToken })
   },
 
   async getMe(): Promise<User> {
-    return httpGet<User>('/api/auth/me')
+    return httpGet<User>('/api/v2/auth/me')
   },
 
   async updateMe(data: { phone?: string; email?: string }): Promise<User> {
-    return httpPut<User>('/api/auth/me', data)
+    return httpPut<User>('/api/v2/auth/me', data)
   },
 
   async updatePassword(oldPassword: string, newPassword: string): Promise<{ message: string }> {
-    return httpPut('/api/auth/password', {
+    return httpPut('/api/v2/auth/password', {
       old_password: hashPassword(oldPassword),
       new_password: hashPassword(newPassword)
     })

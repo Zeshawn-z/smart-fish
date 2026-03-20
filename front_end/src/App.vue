@@ -1,11 +1,11 @@
 <template>
   <el-scrollbar class="app-scrollbar" @scroll="onScroll">
     <div id="app-wrapper">
-      <Navbar v-if="!route.meta.hideNavbar" />
-      <main class="main-content" :class="{ 'no-navbar': route.meta.hideNavbar }">
+      <Navbar />
+      <main class="main-content" :class="{ 'admin-page': route.meta.hideFooter }">
         <router-view />
       </main>
-      <Footer v-if="!route.meta.hideNavbar" />
+      <Footer v-if="!route.meta.hideFooter" />
     </div>
   </el-scrollbar>
 </template>
@@ -55,8 +55,10 @@ html, body, #app {
   margin: 0 auto;
 }
 
-.main-content.no-navbar {
+/* 后台管理页面：全宽、无 padding */
+.main-content.admin-page {
   padding: 0;
   max-width: none;
+  margin: 0;
 }
 </style>

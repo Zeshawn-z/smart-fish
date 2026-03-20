@@ -28,18 +28,19 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================================
 -- 1. 用户 (users)
 -- 密码: admin123 / staff123 / user123 / fisher666
+-- 注意: 前端登录时会先 SHA256 再发送，所以这里的 bcrypt 哈希是对 SHA256(明文密码) 生成的
 -- ============================================================================
 INSERT INTO users (id, username, password_hash, role, phone, email, register_time, created_at, updated_at) VALUES
-(1, 'admin',    '$2b$12$oPdC9JRwslCCdMSOdfE3Nu6lp9TBNXcRnSA85wlcKJJvWV8Cj28fO', 'admin', '13800000001', 'admin@smartfish.com',    NOW() - INTERVAL 90 DAY, NOW() - INTERVAL 90 DAY, NOW()),
-(2, 'staff01',  '$2b$12$tWP76wFZEFhJcjFOJHCyQOu4uIzz2XIznm0AkLATeydSnFKjwjiM6', 'staff', '13800000002', 'staff01@smartfish.com',  NOW() - INTERVAL 60 DAY, NOW() - INTERVAL 60 DAY, NOW()),
-(3, 'staff02',  '$2b$12$tWP76wFZEFhJcjFOJHCyQOu4uIzz2XIznm0AkLATeydSnFKjwjiM6', 'staff', '13800000010', 'staff02@smartfish.com',  NOW() - INTERVAL 45 DAY, NOW() - INTERVAL 45 DAY, NOW()),
-(4, 'fisher01', '$2b$12$2EpynErB02cwElr6UOs6rO86idmoR2DzYcrNmg8fKCI7dP6IUnbY6', 'user',  '13800000003', 'fisher01@smartfish.com', NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY, NOW()),
-(5, 'fisher02', '$2b$12$2EpynErB02cwElr6UOs6rO86idmoR2DzYcrNmg8fKCI7dP6IUnbY6', 'user',  '13800000004', 'fisher02@qq.com',       NOW() - INTERVAL 20 DAY, NOW() - INTERVAL 20 DAY, NOW()),
-(6, 'fisher03', '$2b$12$iQJaQTqkeCpmrkge/ch/J.TSZNHpllUwQVraTy9suXRYR2.fZnEa.', 'user',  '13800000005', 'fisher03@163.com',      NOW() - INTERVAL 15 DAY, NOW() - INTERVAL 15 DAY, NOW()),
-(7, 'fisher04', '$2b$12$iQJaQTqkeCpmrkge/ch/J.TSZNHpllUwQVraTy9suXRYR2.fZnEa.', 'user',  '13800000006', 'fisher04@gmail.com',    NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 10 DAY, NOW()),
-(8, 'fisher05', '$2b$12$2EpynErB02cwElr6UOs6rO86idmoR2DzYcrNmg8fKCI7dP6IUnbY6', 'user',  '13800000007', 'fisher05@smartfish.com', NOW() - INTERVAL 5 DAY,  NOW() - INTERVAL 5 DAY,  NOW()),
-(9, 'fisher06', '$2b$12$2EpynErB02cwElr6UOs6rO86idmoR2DzYcrNmg8fKCI7dP6IUnbY6', 'user',  '13800000008', 'fisher06@qq.com',       NOW() - INTERVAL 3 DAY,  NOW() - INTERVAL 3 DAY,  NOW()),
-(10,'fisher07', '$2b$12$iQJaQTqkeCpmrkge/ch/J.TSZNHpllUwQVraTy9suXRYR2.fZnEa.', 'user',  '13800000009', 'fisher07@163.com',      NOW() - INTERVAL 1 DAY,  NOW() - INTERVAL 1 DAY,  NOW());
+(1, 'admin',    '$2a$12$uGR1UmPT5lAau.ZY.CVnguqMHvoMbthz62UlJEz6kpz3ISiH8el2m', 'admin', '13800000001', 'admin@smartfish.com',    NOW() - INTERVAL 90 DAY, NOW() - INTERVAL 90 DAY, NOW()),
+(2, 'staff01',  '$2a$12$LPIwPjWoQModYtxXFttltuCdNQ2y1r3l7zeNzHH6dnOEyuOtxlZne', 'staff', '13800000002', 'staff01@smartfish.com',  NOW() - INTERVAL 60 DAY, NOW() - INTERVAL 60 DAY, NOW()),
+(3, 'staff02',  '$2a$12$LPIwPjWoQModYtxXFttltuCdNQ2y1r3l7zeNzHH6dnOEyuOtxlZne', 'staff', '13800000010', 'staff02@smartfish.com',  NOW() - INTERVAL 45 DAY, NOW() - INTERVAL 45 DAY, NOW()),
+(4, 'fisher01', '$2a$12$Y/NYrHrcWRc1SEwQD6rbwOns7zSoe0YBiC9.0fiYZmhlOI0yT60FO', 'user',  '13800000003', 'fisher01@smartfish.com', NOW() - INTERVAL 30 DAY, NOW() - INTERVAL 30 DAY, NOW()),
+(5, 'fisher02', '$2a$12$Y/NYrHrcWRc1SEwQD6rbwOns7zSoe0YBiC9.0fiYZmhlOI0yT60FO', 'user',  '13800000004', 'fisher02@qq.com',       NOW() - INTERVAL 20 DAY, NOW() - INTERVAL 20 DAY, NOW()),
+(6, 'fisher03', '$2a$12$0mE0JXbdPRjHfyrXc2Yv.eDAiX3LPxQGMcxOdAOqfDRxo.gXl/zgi', 'user',  '13800000005', 'fisher03@163.com',      NOW() - INTERVAL 15 DAY, NOW() - INTERVAL 15 DAY, NOW()),
+(7, 'fisher04', '$2a$12$0mE0JXbdPRjHfyrXc2Yv.eDAiX3LPxQGMcxOdAOqfDRxo.gXl/zgi', 'user',  '13800000006', 'fisher04@gmail.com',    NOW() - INTERVAL 10 DAY, NOW() - INTERVAL 10 DAY, NOW()),
+(8, 'fisher05', '$2a$12$Y/NYrHrcWRc1SEwQD6rbwOns7zSoe0YBiC9.0fiYZmhlOI0yT60FO', 'user',  '13800000007', 'fisher05@smartfish.com', NOW() - INTERVAL 5 DAY,  NOW() - INTERVAL 5 DAY,  NOW()),
+(9, 'fisher06', '$2a$12$Y/NYrHrcWRc1SEwQD6rbwOns7zSoe0YBiC9.0fiYZmhlOI0yT60FO', 'user',  '13800000008', 'fisher06@qq.com',       NOW() - INTERVAL 3 DAY,  NOW() - INTERVAL 3 DAY,  NOW()),
+(10,'fisher07', '$2a$12$0mE0JXbdPRjHfyrXc2Yv.eDAiX3LPxQGMcxOdAOqfDRxo.gXl/zgi', 'user',  '13800000009', 'fisher07@163.com',      NOW() - INTERVAL 1 DAY,  NOW() - INTERVAL 1 DAY,  NOW());
 
 -- ============================================================================
 -- 2. 区域 (regions)

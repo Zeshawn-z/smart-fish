@@ -1,6 +1,8 @@
 package database
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"log"
 	"math"
 	"time"
@@ -10,13 +12,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// sha256Hex 模拟前端 CryptoJS.SHA256(password).toString() 的行为
+func sha256Hex(password string) string {
+	h := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(h[:])
+}
+
 // Seed 填充示例数据（开发环境使用）
 func Seed() {
 	// 检查是否已有数据
 	var userCount int64
 	DB.Model(&models.User{}).Count(&userCount)
 	if userCount > 0 {
-		log.Println("Database already has data, skipping seed")
+		log.Println("Database already has base data, checking SFR data...")
+		seedSFRIfNeeded()
 		return
 	}
 
@@ -25,10 +34,11 @@ func Seed() {
 	now := time.Now()
 
 	// ===== 1. 创建用户 =====
-	adminHash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-	staffHash, _ := bcrypt.GenerateFromPassword([]byte("staff123"), bcrypt.DefaultCost)
-	userHash, _ := bcrypt.GenerateFromPassword([]byte("user123"), bcrypt.DefaultCost)
-	fisherHash, _ := bcrypt.GenerateFromPassword([]byte("fisher666"), bcrypt.DefaultCost)
+	// 前端登录时会先 SHA256 再发给后端，所以 seed 也要对 SHA256 后的值做 bcrypt
+	adminHash, _ := bcrypt.GenerateFromPassword([]byte(sha256Hex("admin123")), bcrypt.DefaultCost)
+	staffHash, _ := bcrypt.GenerateFromPassword([]byte(sha256Hex("staff123")), bcrypt.DefaultCost)
+	userHash, _ := bcrypt.GenerateFromPassword([]byte(sha256Hex("user123")), bcrypt.DefaultCost)
+	fisherHash, _ := bcrypt.GenerateFromPassword([]byte(sha256Hex("fisher666")), bcrypt.DefaultCost)
 
 	users := []models.User{
 		{Username: "admin", PasswordHash: string(adminHash), Role: "admin", Phone: "13800000001", Email: "admin@smartfish.com"},
@@ -289,5 +299,231 @@ func Seed() {
 	}
 	DB.Create(&suggestions)
 
+	// ===== 13. SFR 社区帖子 =====
+	posts := []models.Post{
+		{UserID: users[3].ID, Title: "今日松花江北岸冰钓，收获满满", Body: "今天天气不错，零下5度，风力2级。早上6点到的松花江北岸，冰层厚度约30cm，非常安全。\n\n用的红虫做饵，1.5号子线配4号袖钩，调4钓2。\n\n早上7点开始连续上鱼，到10点一共钓了12条鲫鱼，最大的有半斤多。中间还跑了一条大鲤鱼，估计有3斤左右，可惜子线太细被切了。\n\n总结：松花江北岸鱼情确实不错，推荐大家来试试！", Tag: "钓鱼日记"},
+		{UserID: users[4].ID, Title: "路亚新手入坑指南 —— 装备选购篇", Body: "最近很多钓友问我路亚入门买什么装备好，这里整理一份新手指南：\n\n1. 竿子：推荐ML调性的直柄竿，6.6尺-7尺，适合抛投3-15g的饵。品牌推荐达亿瓦、禧玛诺入门款。\n\n2. 轮子：纺车轮2000-2500型号，选带微调刹车的，新手容易上手。\n\n3. 线组：PE线0.6-0.8号配碳素前导线6-8磅。\n\n4. 假饵：先买一些亮片（3-7g银色/金色各几个）、软虫（T尾和卷尾）、米诺（5-7cm）。\n\n预算1000元左右就能搞定一套入门装备，不要一上来就买太贵的。", Tag: "经验分享"},
+		{UserID: users[5].ID, Title: "镜泊湖大坝钓场实测报告", Body: "上周末去了镜泊湖大坝钓场，这里水深8-12米，鱼种丰富。\n\n使用6.3米矶钓竿，3号主线配1.5号子线，伊势尼7号钩。饵料用的发酵玉米粒配合商品饵搓饵。\n\n第一天上了3条鲤鱼（最大的8斤）和5条鲢鳙。第二天鱼口稍差，但也有2条鲤鱼入账。\n\n这个钓场真的适合想搞大物的钓友，设备监测数据也很准确，水温和气压信息很有参考价值。", Tag: "钓点推荐"},
+		{UserID: users[6].ID, Title: "兴凯湖白鱼季开始了！路亚爆护", Body: "兴凯湖北岸的白鱼季终于来了！今天用路亚拟饵在浅水区抛投，3-5克银色亮片，疯狂上鱼！\n\n从日出开始到上午10点，一共中了15条白鱼，最大的有1.2斤。白鱼拉力很足，用ML竿手感极佳。\n\n提醒钓友们：白鱼嘴薄，中鱼后不要太急着收线，保持竿稍弹性。", Tag: "钓鱼日记"},
+		{UserID: users[7].ID, Title: "求助：台钓新手调漂总是调不准", Body: "各位大佬好，我是刚入坑台钓的新手，有个问题想请教。\n\n我买的是一支3.6米手竿，用的是吃铅1.2g的芦苇浮漂。按照教程调4钓2，但是实际钓的时候总感觉不对劲，鱼口反应不明显，经常空竿。\n\n请问是浮漂选的不对，还是调法有问题？我的钓点水深大约2米。用的红虫拉饵。\n\n希望有经验的钓友指点一二，谢谢！", Tag: "问答求助"},
+		{UserID: users[8].ID, Title: "达亿瓦 23款天弓鲤测评", Body: "入手了一根达亿瓦23款天弓鲤4.5米，使用一个月来分享下感受。\n\n优点：\n- 腰力非常好，博大鱼不吃力\n- 涂装漂亮，做工精细\n- 自重轻，长时间持竿不累\n\n缺点：\n- 价格偏高（1200+）\n- 竿稍偏硬，小鱼手感一般\n\n总体来说是一款非常优秀的综合竿，适合野钓和黑坑。如果预算够的话强烈推荐。打分：8.5/10", Tag: "装备测评"},
+		{UserID: users[9].ID, Title: "太阳岛西侧湖夜钓记", Body: "昨晚在太阳岛西侧湖夜钓，从下午5点一直钓到凌晨1点。\n\n环境很好，水面平静，蚊虫也不多（带了驱蚊灯）。用的夜光浮漂+蓝光灯，看漂非常清楚。\n\n饵料：前期用腥饵打窝聚鱼，后期换拉饵钓。\n\n战果：鲫鱼23条、鲤鱼2条、黄辣丁4条，还有一条不到半斤的小鲶鱼。\n\n太阳岛夜钓体验极佳，推荐！记得带厚衣服，夜里降温明显。", Tag: "钓鱼日记"},
+	}
+	DB.Create(&posts)
+
+	// ===== 14. 评论 =====
+	comments := []models.Comment{
+		{PostID: posts[0].PostID, UserID: users[4].ID, Body: "太厉害了！松花江北岸确实出鱼，我上次也去了，不过没有你钓得多"},
+		{PostID: posts[0].PostID, UserID: users[5].ID, Body: "请问冰钓用什么型号的冰钻？厚度30cm的话普通手钻能打透吗？"},
+		{PostID: posts[0].PostID, UserID: users[6].ID, Body: "大鲤鱼跑了太可惜了，下次建议用1号子线+伊势尼钩"},
+		{PostID: posts[1].PostID, UserID: users[3].ID, Body: "写得很详细，新手友好！我就是按照这个思路入门的路亚"},
+		{PostID: posts[1].PostID, UserID: users[7].ID, Body: "补充一下，新手PE线可以先买编织线，比较耐磨，不容易炸线"},
+		{PostID: posts[2].PostID, UserID: users[4].ID, Body: "镜泊湖大坝确实出大物，我之前去钓过一条10斤的鲤鱼"},
+		{PostID: posts[2].PostID, UserID: users[8].ID, Body: "请问那边住宿方便吗？打算周末过去"},
+		{PostID: posts[3].PostID, UserID: users[3].ID, Body: "羡慕！白鱼路亚手感确实好，我也想去兴凯湖试试"},
+		{PostID: posts[4].PostID, UserID: users[5].ID, Body: "新手调漂建议先在家里用水盆练习，找到半水调目。你的浮漂吃铅1.2g偏大了，建议换0.8g左右的"},
+		{PostID: posts[4].PostID, UserID: users[6].ID, Body: "调4钓2是经典调法，但实际钓的时候要根据鱼口调整。鱼口轻就调高钓低，鱼口重就调低钓高"},
+		{PostID: posts[5].PostID, UserID: users[9].ID, Body: "天弓鲤确实不错，我用的3.9米款，博5斤鲤鱼游刃有余"},
+		{PostID: posts[6].PostID, UserID: users[4].ID, Body: "太阳岛夜钓氛围确实好，下次组队一起去"},
+	}
+	DB.Create(&comments)
+
+	// ===== 15. 楼中楼子评论 =====
+	cocs := []models.CommentOnComments{
+		{CommentID: comments[0].CommentID, UserID: users[3].ID, Body: "哈哈主要是今天鱼口好，运气成分也有"},
+		{CommentID: comments[1].CommentID, UserID: users[3].ID, Body: "我用的手摇冰钻，一般15分钟就能打穿30cm。电钻也行但是重"},
+		{CommentID: comments[2].CommentID, UserID: users[3].ID, Body: "有道理，下次升级线组再战！"},
+		{CommentID: comments[4].CommentID, UserID: users[4].ID, Body: "确实，编织PE线不容易打结，新手友好很多"},
+		{CommentID: comments[8].CommentID, UserID: users[7].ID, Body: "谢谢！我去买个0.8g的浮漂试试"},
+		{CommentID: comments[9].CommentID, UserID: users[7].ID, Body: "明白了，我试试调5钓3看看效果"},
+	}
+	DB.Create(&cocs)
+
+	// ===== 16. 帖子点赞 =====
+	postLikes := []models.LikeOnPosts{
+		{PostID: posts[0].PostID, UserID: users[4].ID},
+		{PostID: posts[0].PostID, UserID: users[5].ID},
+		{PostID: posts[0].PostID, UserID: users[6].ID},
+		{PostID: posts[0].PostID, UserID: users[7].ID},
+		{PostID: posts[1].PostID, UserID: users[3].ID},
+		{PostID: posts[1].PostID, UserID: users[5].ID},
+		{PostID: posts[1].PostID, UserID: users[7].ID},
+		{PostID: posts[2].PostID, UserID: users[4].ID},
+		{PostID: posts[2].PostID, UserID: users[8].ID},
+		{PostID: posts[3].PostID, UserID: users[3].ID},
+		{PostID: posts[3].PostID, UserID: users[5].ID},
+		{PostID: posts[3].PostID, UserID: users[4].ID},
+		{PostID: posts[4].PostID, UserID: users[5].ID},
+		{PostID: posts[4].PostID, UserID: users[6].ID},
+		{PostID: posts[5].PostID, UserID: users[9].ID},
+		{PostID: posts[6].PostID, UserID: users[3].ID},
+		{PostID: posts[6].PostID, UserID: users[4].ID},
+		{PostID: posts[6].PostID, UserID: users[8].ID},
+	}
+	DB.Create(&postLikes)
+
+	// ===== 17. IoT 设备（用户绑定的智能浮漂/钓箱） =====
+	iotDevices := []models.IoTDevice{
+		{DeviceID: "SF-FLOAT-001", Temperature: 8.2, Humidity: 64.5, Pulling: 0.35, Pressure: 1013.8, GpsInfo: "45.7772,126.6177", ImuData: "stable", LastUpdate: now},
+		{DeviceID: "SF-FLOAT-002", Temperature: 6.5, Humidity: 70.1, Pulling: 0.0, Pressure: 1014.2, GpsInfo: "44.0112,128.9945", ImuData: "stable", LastUpdate: now.Add(-2 * time.Hour)},
+		{DeviceID: "SF-BOX-001", Temperature: 5.8, Humidity: 71.3, Pulling: 1.25, Pressure: 1015.0, GpsInfo: "45.3245,132.4567", ImuData: "active", LastUpdate: now.Add(-30 * time.Minute)},
+		{DeviceID: "SF-FLOAT-003", Temperature: 9.1, Humidity: 61.8, Pulling: 0.0, Pressure: 1012.6, GpsInfo: "45.7891,126.5812", ImuData: "idle", LastUpdate: now.Add(-5 * time.Hour)},
+	}
+	DB.Create(&iotDevices)
+
+	// ===== 18. 垂钓记录 =====
+	fishingRecords := []models.FishingRecord{
+		{UserID: users[3].ID, DeviceID: "SF-FLOAT-001", StartTime: now.Add(-10 * time.Hour), EndTime: now.Add(-6 * time.Hour), Latitude: 45.7772, Longitude: 126.6177},
+		{UserID: users[3].ID, DeviceID: "", StartTime: now.Add(-34 * time.Hour), EndTime: now.Add(-30 * time.Hour), Latitude: 45.7685, Longitude: 126.6089},
+		{UserID: users[4].ID, DeviceID: "SF-FLOAT-002", StartTime: now.Add(-26 * time.Hour), EndTime: now.Add(-22 * time.Hour), Latitude: 44.0112, Longitude: 128.9945},
+		{UserID: users[5].ID, DeviceID: "", StartTime: now.Add(-48 * time.Hour), EndTime: now.Add(-44 * time.Hour), Latitude: 44.0112, Longitude: 128.9945},
+		{UserID: users[6].ID, DeviceID: "SF-BOX-001", StartTime: now.Add(-8 * time.Hour), EndTime: now.Add(-4 * time.Hour), Latitude: 45.3245, Longitude: 132.4567},
+		{UserID: users[7].ID, DeviceID: "", StartTime: now.Add(-72 * time.Hour), EndTime: now.Add(-68 * time.Hour), Latitude: 45.7891, Longitude: 126.5812},
+		{UserID: users[8].ID, DeviceID: "SF-FLOAT-003", StartTime: now.Add(-14 * time.Hour), EndTime: now.Add(-8 * time.Hour), Latitude: 45.7891, Longitude: 126.5812},
+	}
+	DB.Create(&fishingRecords)
+
+	// ===== 19. 渔获 =====
+	fishCaught := []models.FishCaught{
+		// fisher01 第一次记录
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-9 * time.Hour), FishType: "鲫鱼", Weight: 0.35, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.5},
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-8*time.Hour - 30*time.Minute), FishType: "鲫鱼", Weight: 0.42, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.5},
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-8 * time.Hour), FishType: "鲤鱼", Weight: 2.10, BaitType: "蚯蚓", BaitWeight: 0.02, FishingDepth: 2.0},
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-7*time.Hour - 15*time.Minute), FishType: "鲫鱼", Weight: 0.28, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.5},
+		// fisher01 第二次记录
+		{RecordID: fishingRecords[1].RecordID, CaughtTime: now.Add(-33 * time.Hour), FishType: "鲫鱼", Weight: 0.30, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.8},
+		{RecordID: fishingRecords[1].RecordID, CaughtTime: now.Add(-32 * time.Hour), FishType: "鲤鱼", Weight: 1.80, BaitType: "玉米粒", BaitWeight: 0.05, FishingDepth: 2.5},
+		// fisher02 镜泊湖
+		{RecordID: fishingRecords[2].RecordID, CaughtTime: now.Add(-25 * time.Hour), FishType: "鲤鱼", Weight: 3.50, BaitType: "发酵饵", BaitWeight: 0.10, FishingDepth: 8.0},
+		{RecordID: fishingRecords[2].RecordID, CaughtTime: now.Add(-24 * time.Hour), FishType: "鲢鳙", Weight: 5.20, BaitType: "雾化饵", BaitWeight: 0.15, FishingDepth: 6.0},
+		{RecordID: fishingRecords[2].RecordID, CaughtTime: now.Add(-23 * time.Hour), FishType: "鲤鱼", Weight: 4.10, BaitType: "发酵饵", BaitWeight: 0.10, FishingDepth: 9.0},
+		// fisher03 镜泊湖
+		{RecordID: fishingRecords[3].RecordID, CaughtTime: now.Add(-47 * time.Hour), FishType: "鲤鱼", Weight: 8.00, BaitType: "发酵玉米", BaitWeight: 0.15, FishingDepth: 10.0},
+		{RecordID: fishingRecords[3].RecordID, CaughtTime: now.Add(-46 * time.Hour), FishType: "鲢鳙", Weight: 4.50, BaitType: "雾化饵", BaitWeight: 0.12, FishingDepth: 7.0},
+		// fisher04 兴凯湖
+		{RecordID: fishingRecords[4].RecordID, CaughtTime: now.Add(-7 * time.Hour), FishType: "大白鱼", Weight: 0.60, BaitType: "银色亮片", BaitWeight: 0.005, FishingDepth: 1.0},
+		{RecordID: fishingRecords[4].RecordID, CaughtTime: now.Add(-6*time.Hour - 40*time.Minute), FishType: "大白鱼", Weight: 0.75, BaitType: "银色亮片", BaitWeight: 0.005, FishingDepth: 0.8},
+		{RecordID: fishingRecords[4].RecordID, CaughtTime: now.Add(-6 * time.Hour), FishType: "大白鱼", Weight: 1.20, BaitType: "金色亮片", BaitWeight: 0.005, FishingDepth: 1.2},
+		// fisher05 太阳岛
+		{RecordID: fishingRecords[5].RecordID, CaughtTime: now.Add(-71 * time.Hour), FishType: "鲫鱼", Weight: 0.25, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 2.0},
+		{RecordID: fishingRecords[5].RecordID, CaughtTime: now.Add(-70 * time.Hour), FishType: "黄辣丁", Weight: 0.15, BaitType: "蚯蚓", BaitWeight: 0.02, FishingDepth: 2.5},
+		// fisher06 太阳岛夜钓
+		{RecordID: fishingRecords[6].RecordID, CaughtTime: now.Add(-12 * time.Hour), FishType: "鲫鱼", Weight: 0.30, BaitType: "拉饵", BaitWeight: 0.02, FishingDepth: 2.0},
+		{RecordID: fishingRecords[6].RecordID, CaughtTime: now.Add(-11 * time.Hour), FishType: "鲤鱼", Weight: 1.50, BaitType: "搓饵", BaitWeight: 0.05, FishingDepth: 3.0},
+		{RecordID: fishingRecords[6].RecordID, CaughtTime: now.Add(-10 * time.Hour), FishType: "黄辣丁", Weight: 0.12, BaitType: "蚯蚓", BaitWeight: 0.02, FishingDepth: 2.5},
+	}
+	DB.Create(&fishCaught)
+
 	log.Println("Database seeded successfully!")
+}
+
+// seedSFRIfNeeded 检查 SFR 表是否已有数据，若没有则从已有用户中提取并插入
+func seedSFRIfNeeded() {
+	var postCount int64
+	DB.Model(&models.Post{}).Count(&postCount)
+	if postCount > 0 {
+		log.Println("SFR data already exists, skipping SFR seed")
+		return
+	}
+
+	log.Println("Seeding SFR (community/fishing) data...")
+
+	now := time.Now()
+
+	// 从数据库读取已有用户（至少需要7个普通用户 index 3~9）
+	var users []models.User
+	DB.Order("id ASC").Find(&users)
+	if len(users) < 10 {
+		log.Println("Not enough users for SFR seed, need at least 10. Skipping.")
+		return
+	}
+
+	// ===== 帖子 =====
+	posts := []models.Post{
+		{UserID: users[3].ID, Title: "今日松花江北岸冰钓，收获满满", Body: "今天天气不错，零下5度，风力2级。早上6点到的松花江北岸，冰层厚度约30cm，非常安全。\n\n用的红虫做饵，1.5号子线配4号袖钩，调4钓2。\n\n早上7点开始连续上鱼，到10点一共钓了12条鲫鱼，最大的有半斤多。中间还跑了一条大鲤鱼，估计有3斤左右，可惜子线太细被切了。\n\n总结：松花江北岸鱼情确实不错，推荐大家来试试！", Tag: "钓鱼日记"},
+		{UserID: users[4].ID, Title: "路亚新手入坑指南 —— 装备选购篇", Body: "最近很多钓友问我路亚入门买什么装备好，这里整理一份新手指南：\n\n1. 竿子：推荐ML调性的直柄竿，6.6尺-7尺，适合抛投3-15g的饵。\n2. 轮子：纺车轮2000-2500型号。\n3. 线组：PE线0.6-0.8号配碳素前导线6-8磅。\n4. 假饵：先买一些亮片、软虫、米诺。\n\n预算1000元左右就能搞定一套入门装备，不要一上来就买太贵的。", Tag: "经验分享"},
+		{UserID: users[5].ID, Title: "镜泊湖大坝钓场实测报告", Body: "上周末去了镜泊湖大坝钓场，这里水深8-12米，鱼种丰富。使用6.3米矶钓竿，3号主线配1.5号子线。第一天上了3条鲤鱼（最大的8斤）和5条鲢鳙。设备监测数据也很准确。", Tag: "钓点推荐"},
+		{UserID: users[6].ID, Title: "兴凯湖白鱼季开始了！路亚爆护", Body: "兴凯湖北岸的白鱼季终于来了！今天用路亚拟饵在浅水区抛投，3-5克银色亮片，疯狂上鱼！从日出到上午10点，一共中了15条白鱼。", Tag: "钓鱼日记"},
+		{UserID: users[7].ID, Title: "求助：台钓新手调漂总是调不准", Body: "我是刚入坑台钓的新手。按照教程调4钓2，但实际钓的时候总感觉不对劲，鱼口反应不明显。请问是浮漂选的不对，还是调法有问题？", Tag: "问答求助"},
+		{UserID: users[8].ID, Title: "达亿瓦 23款天弓鲤测评", Body: "入手了一根达亿瓦23款天弓鲤4.5米，使用一个月分享感受。优点：腰力好、涂装漂亮、自重轻。缺点：价格偏高、竿稍偏硬。总体打分8.5/10。", Tag: "装备测评"},
+		{UserID: users[9].ID, Title: "太阳岛西侧湖夜钓记", Body: "昨晚在太阳岛西侧湖夜钓，从下午5点一直钓到凌晨1点。战果：鲫鱼23条、鲤鱼2条、黄辣丁4条。太阳岛夜钓体验极佳，推荐！", Tag: "钓鱼日记"},
+	}
+	DB.Create(&posts)
+
+	// ===== 评论 =====
+	comments := []models.Comment{
+		{PostID: posts[0].PostID, UserID: users[4].ID, Body: "太厉害了！松花江北岸确实出鱼"},
+		{PostID: posts[0].PostID, UserID: users[5].ID, Body: "请问冰钓用什么型号的冰钻？"},
+		{PostID: posts[0].PostID, UserID: users[6].ID, Body: "大鲤鱼跑了太可惜了，下次建议用1号子线"},
+		{PostID: posts[1].PostID, UserID: users[3].ID, Body: "写得很详细，新手友好！"},
+		{PostID: posts[1].PostID, UserID: users[7].ID, Body: "补充一下，新手PE线可以先买编织线"},
+		{PostID: posts[2].PostID, UserID: users[4].ID, Body: "镜泊湖大坝确实出大物"},
+		{PostID: posts[3].PostID, UserID: users[3].ID, Body: "羡慕！白鱼路亚手感确实好"},
+		{PostID: posts[4].PostID, UserID: users[5].ID, Body: "新手调漂建议先在家里用水盆练习"},
+		{PostID: posts[4].PostID, UserID: users[6].ID, Body: "调4钓2是经典调法，但要根据鱼口调整"},
+		{PostID: posts[5].PostID, UserID: users[9].ID, Body: "天弓鲤确实不错，博5斤鲤鱼游刃有余"},
+		{PostID: posts[6].PostID, UserID: users[4].ID, Body: "太阳岛夜钓氛围确实好，下次组队去"},
+	}
+	DB.Create(&comments)
+
+	// ===== 子评论 =====
+	cocs := []models.CommentOnComments{
+		{CommentID: comments[0].CommentID, UserID: users[3].ID, Body: "哈哈主要是今天鱼口好"},
+		{CommentID: comments[1].CommentID, UserID: users[3].ID, Body: "我用的手摇冰钻，15分钟就能打穿30cm"},
+		{CommentID: comments[7].CommentID, UserID: users[7].ID, Body: "谢谢！我去试试换0.8g的浮漂"},
+	}
+	DB.Create(&cocs)
+
+	// ===== 点赞 =====
+	postLikes := []models.LikeOnPosts{
+		{PostID: posts[0].PostID, UserID: users[4].ID},
+		{PostID: posts[0].PostID, UserID: users[5].ID},
+		{PostID: posts[0].PostID, UserID: users[6].ID},
+		{PostID: posts[1].PostID, UserID: users[3].ID},
+		{PostID: posts[1].PostID, UserID: users[5].ID},
+		{PostID: posts[2].PostID, UserID: users[4].ID},
+		{PostID: posts[3].PostID, UserID: users[3].ID},
+		{PostID: posts[3].PostID, UserID: users[5].ID},
+		{PostID: posts[4].PostID, UserID: users[5].ID},
+		{PostID: posts[5].PostID, UserID: users[9].ID},
+		{PostID: posts[6].PostID, UserID: users[3].ID},
+		{PostID: posts[6].PostID, UserID: users[4].ID},
+	}
+	DB.Create(&postLikes)
+
+	// ===== IoT 设备 =====
+	iotDevices := []models.IoTDevice{
+		{DeviceID: "SF-FLOAT-001", Temperature: 8.2, Humidity: 64.5, Pulling: 0.35, Pressure: 1013.8, GpsInfo: "45.7772,126.6177", ImuData: "stable", LastUpdate: now},
+		{DeviceID: "SF-FLOAT-002", Temperature: 6.5, Humidity: 70.1, Pulling: 0.0, Pressure: 1014.2, GpsInfo: "44.0112,128.9945", ImuData: "stable", LastUpdate: now.Add(-2 * time.Hour)},
+		{DeviceID: "SF-BOX-001", Temperature: 5.8, Humidity: 71.3, Pulling: 1.25, Pressure: 1015.0, GpsInfo: "45.3245,132.4567", ImuData: "active", LastUpdate: now.Add(-30 * time.Minute)},
+		{DeviceID: "SF-FLOAT-003", Temperature: 9.1, Humidity: 61.8, Pulling: 0.0, Pressure: 1012.6, GpsInfo: "45.7891,126.5812", ImuData: "idle", LastUpdate: now.Add(-5 * time.Hour)},
+	}
+	DB.Create(&iotDevices)
+
+	// ===== 垂钓记录 =====
+	fishingRecords := []models.FishingRecord{
+		{UserID: users[3].ID, DeviceID: "SF-FLOAT-001", StartTime: now.Add(-10 * time.Hour), EndTime: now.Add(-6 * time.Hour), Latitude: 45.7772, Longitude: 126.6177},
+		{UserID: users[3].ID, DeviceID: "", StartTime: now.Add(-34 * time.Hour), EndTime: now.Add(-30 * time.Hour), Latitude: 45.7685, Longitude: 126.6089},
+		{UserID: users[4].ID, DeviceID: "SF-FLOAT-002", StartTime: now.Add(-26 * time.Hour), EndTime: now.Add(-22 * time.Hour), Latitude: 44.0112, Longitude: 128.9945},
+		{UserID: users[5].ID, DeviceID: "", StartTime: now.Add(-48 * time.Hour), EndTime: now.Add(-44 * time.Hour), Latitude: 44.0112, Longitude: 128.9945},
+		{UserID: users[6].ID, DeviceID: "SF-BOX-001", StartTime: now.Add(-8 * time.Hour), EndTime: now.Add(-4 * time.Hour), Latitude: 45.3245, Longitude: 132.4567},
+	}
+	DB.Create(&fishingRecords)
+
+	// ===== 渔获 =====
+	fishCaught := []models.FishCaught{
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-9 * time.Hour), FishType: "鲫鱼", Weight: 0.35, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.5},
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-8 * time.Hour), FishType: "鲤鱼", Weight: 2.10, BaitType: "蚯蚓", BaitWeight: 0.02, FishingDepth: 2.0},
+		{RecordID: fishingRecords[0].RecordID, CaughtTime: now.Add(-7 * time.Hour), FishType: "鲫鱼", Weight: 0.28, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.5},
+		{RecordID: fishingRecords[1].RecordID, CaughtTime: now.Add(-33 * time.Hour), FishType: "鲫鱼", Weight: 0.30, BaitType: "红虫", BaitWeight: 0.01, FishingDepth: 1.8},
+		{RecordID: fishingRecords[1].RecordID, CaughtTime: now.Add(-32 * time.Hour), FishType: "鲤鱼", Weight: 1.80, BaitType: "玉米粒", BaitWeight: 0.05, FishingDepth: 2.5},
+		{RecordID: fishingRecords[2].RecordID, CaughtTime: now.Add(-25 * time.Hour), FishType: "鲤鱼", Weight: 3.50, BaitType: "发酵饵", BaitWeight: 0.10, FishingDepth: 8.0},
+		{RecordID: fishingRecords[2].RecordID, CaughtTime: now.Add(-24 * time.Hour), FishType: "鲢鳙", Weight: 5.20, BaitType: "雾化饵", BaitWeight: 0.15, FishingDepth: 6.0},
+		{RecordID: fishingRecords[3].RecordID, CaughtTime: now.Add(-47 * time.Hour), FishType: "鲤鱼", Weight: 8.00, BaitType: "发酵玉米", BaitWeight: 0.15, FishingDepth: 10.0},
+		{RecordID: fishingRecords[4].RecordID, CaughtTime: now.Add(-7 * time.Hour), FishType: "大白鱼", Weight: 0.60, BaitType: "银色亮片", BaitWeight: 0.005, FishingDepth: 1.0},
+		{RecordID: fishingRecords[4].RecordID, CaughtTime: now.Add(-6 * time.Hour), FishType: "大白鱼", Weight: 1.20, BaitType: "金色亮片", BaitWeight: 0.005, FishingDepth: 1.2},
+	}
+	DB.Create(&fishCaught)
+
+	log.Println("SFR community data seeded successfully!")
 }

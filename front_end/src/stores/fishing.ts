@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Region, FishingSpot, PopularSpot, PaginatedResponse } from '@/types'
+import type { Region, FishingSpot, PopularSpot } from '@/types'
 import { RegionService, FishingSpotService } from '@/services'
 
 export const useFishingStore = defineStore('fishing', () => {
@@ -37,7 +37,8 @@ export const useFishingStore = defineStore('fishing', () => {
   async function fetchRegions(params?: { province?: string; search?: string }) {
     isLoading.value = true
     try {
-      regions.value = await RegionService.list(params)
+      const res = await RegionService.list(params)
+      regions.value = res.data
     } finally {
       isLoading.value = false
     }
@@ -62,10 +63,10 @@ export const useFishingStore = defineStore('fishing', () => {
   }) {
     isLoading.value = true
     try {
-      const data: PaginatedResponse<FishingSpot> = await FishingSpotService.list(params)
-      spots.value = data.results
-      spotsTotal.value = data.total
-      spotsPage.value = data.page
+      const res = await FishingSpotService.list(params)
+      spots.value = res.data
+      spotsTotal.value = res.total
+      spotsPage.value = params?.page ?? 1
     } finally {
       isLoading.value = false
     }

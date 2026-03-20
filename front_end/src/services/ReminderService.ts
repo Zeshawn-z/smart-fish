@@ -1,30 +1,25 @@
-import { httpGet, httpPost, httpPatch, httpDelete } from '@/network/http'
-import type { Reminder, PaginatedResponse } from '@/types'
+import { createResourceService } from './createResourceService'
+import type { Reminder } from '@/types'
 
-export const ReminderService = {
-  async list(params?: {
+export const ReminderService = createResourceService({
+  name: 'reminders',
+  model: {} as Reminder,
+  paginated: true,
+  cache: { ttl: 30_000 },
+  listParams: {} as {
     spot_id?: number
     level?: number
     resolved?: string
     page?: number
     page_size?: number
-  }): Promise<PaginatedResponse<Reminder>> {
-    return httpGet<PaginatedResponse<Reminder>>('/api/reminders', params)
   },
-
-  async get(id: number): Promise<Reminder> {
-    return httpGet<Reminder>(`/api/reminders/${id}`)
-  },
-
-  async create(data: Partial<Reminder>): Promise<Reminder> {
-    return httpPost<Reminder>('/api/reminders', data)
-  },
-
-  async resolve(id: number): Promise<{ message: string }> {
-    return httpPatch(`/api/reminders/${id}/resolve`)
-  },
-
-  async delete(id: number): Promise<void> {
-    return httpDelete(`/api/reminders/${id}`)
-  }
-}
+  extend: (ctx) => ({
+    /** 标记提醒为已解决 */
+    async resolve(id: number): Promise<{ message: string }> {
+      const result = await ctx.http.patch<{ message: string }>(`${ctx.baseURL}/${id}/resolve`)
+      ctx.cache.removeItem(id)
+      ctx.cache.invalidateList()
+      return result
+    }
+  })
+})

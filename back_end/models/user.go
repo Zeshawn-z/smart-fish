@@ -20,9 +20,11 @@ type UserResponse struct {
 	Role         string    `json:"role"`
 	Phone        string    `json:"phone"`
 	Email        string    `json:"email"`
+	Avatar       *string   `json:"avatar"`
 	RegisterTime time.Time `json:"register_time"`
 }
 
+// ToResponse 生成用户响应（不含头像，需额外查询时用 ToResponseWithAvatar）
 func (u *User) ToResponse() UserResponse {
 	return UserResponse{
 		ID:           u.ID,
@@ -30,6 +32,19 @@ func (u *User) ToResponse() UserResponse {
 		Role:         u.Role,
 		Phone:        u.Phone,
 		Email:        u.Email,
+		RegisterTime: u.RegisterTime,
+	}
+}
+
+// ToResponseWithAvatar 生成用户响应（含头像 URL）
+func (u *User) ToResponseWithAvatar(avatarURL *string) UserResponse {
+	return UserResponse{
+		ID:           u.ID,
+		Username:     u.Username,
+		Role:         u.Role,
+		Phone:        u.Phone,
+		Email:        u.Email,
+		Avatar:       avatarURL,
 		RegisterTime: u.RegisterTime,
 	}
 }

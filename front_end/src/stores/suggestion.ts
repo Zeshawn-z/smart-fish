@@ -28,7 +28,7 @@ export const useSuggestionStore = defineStore('suggestion', () => {
     isLoading.value = true
     try {
       const res = await SuggestionService.list(params)
-      suggestions.value = res.results
+      suggestions.value = res.data
       total.value = res.total
     } finally {
       isLoading.value = false
