@@ -321,7 +321,7 @@ export function createResourceService<
   }
 
   // ---- 合并自定义扩展 ----
-  const extensions = options.extend ? options.extend(ctx) : ({} as TExt)
+  const extensions = options.extend ? options.extend(ctx) : {}
 
   return Object.assign(base, extensions) as any
 }
