@@ -99,15 +99,6 @@ jobs:
           - goos: linux
             goarch: amd64
             suffix: ''
-          - goos: linux
-            goarch: arm64
-            suffix: ''
-          - goos: darwin
-            goarch: amd64
-            suffix: ''
-          - goos: darwin
-            goarch: arm64
-            suffix: ''
           - goos: windows
             goarch: amd64
             suffix: '.exe'
@@ -149,15 +140,6 @@ jobs:
           - goos: linux
             goarch: amd64
             suffix: ''
-          - goos: linux
-            goarch: arm64
-            suffix: ''
-          - goos: darwin
-            goarch: amd64
-            suffix: ''
-          - goos: darwin
-            goarch: arm64
-            suffix: ''
           - goos: windows
             goarch: amd64
             suffix: '.exe'
@@ -195,20 +177,65 @@ jobs:
           name: ${{ env.BINARY_NAME }}
           path: ${{ env.BINARY_NAME }}
 
-  # ===== 第五步：创建 Release =====
+  # ===== 第五步：打包初始化脚本 =====
+  prepare-scripts:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Upload setup script
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-script
+          path: setup.sh
+
+      - name: Upload seed SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-sql
+          path: back_end/database/seed.sql
+
+  # ===== 第六步：创建 Release =====
   release:
-    needs: [tag, build-frontend, build-backend-only, build-combo]
+    needs: [tag, build-frontend, build-backend-only, build-combo, prepare-scripts]
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download all artifacts
+      - name: Download binary artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          merge-multiple: true
+          path: all-artifacts
 
-      - name: List artifacts
-        run: ls -lhR artifacts/
+      - name: Collect release files
+        run: |
+          mkdir -p release-files
+
+          # 复制后端和组合版二进制文件
+          for name in smart-fish-server-linux-amd64 smart-fish-server-windows-amd64.exe \
+                      smart-fish-combo-linux-amd64 smart-fish-combo-windows-amd64.exe; do
+            if [ -d "all-artifacts/$name" ]; then
+              cp "all-artifacts/$name/$name" release-files/
+            fi
+          done
+
+          # 复制前端压缩包
+          if [ -d "all-artifacts/frontend-archives" ]; then
+            cp all-artifacts/frontend-archives/smart-fish-frontend-dist.tar.gz release-files/
+            cp all-artifacts/frontend-archives/smart-fish-frontend-dist.zip release-files/
+          fi
+
+          # 复制脚本和 SQL
+          if [ -d "all-artifacts/setup-script" ]; then
+            cp all-artifacts/setup-script/setup.sh release-files/
+          fi
+          if [ -d "all-artifacts/seed-sql" ]; then
+            cp all-artifacts/seed-sql/seed.sql release-files/
+          fi
+
+          echo "=== Release files ==="
+          ls -lh release-files/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -229,9 +256,6 @@ jobs:
             | 文件 | 系统 | 架构 |
             |------|------|------|
             | `smart-fish-combo-linux-amd64` | Linux | x86_64 |
-            | `smart-fish-combo-linux-arm64` | Linux | ARM64 |
-            | `smart-fish-combo-darwin-amd64` | macOS | Intel |
-            | `smart-fish-combo-darwin-arm64` | macOS | Apple Silicon |
             | `smart-fish-combo-windows-amd64.exe` | Windows | x86_64 |
 
             #### 🔧 纯后端 API 服务（需自行部署前端）
@@ -239,9 +263,6 @@ jobs:
             | 文件 | 系统 | 架构 |
             |------|------|------|
             | `smart-fish-server-linux-amd64` | Linux | x86_64 |
-            | `smart-fish-server-linux-arm64` | Linux | ARM64 |
-            | `smart-fish-server-darwin-amd64` | macOS | Intel |
-            | `smart-fish-server-darwin-arm64` | macOS | Apple Silicon |
             | `smart-fish-server-windows-amd64.exe` | Windows | x86_64 |
 
             #### 🎨 前端产物（静态文件，可自行用 Nginx 等部署）
@@ -251,32 +272,31 @@ jobs:
             | `smart-fish-frontend-dist.tar.gz` | tar.gz 压缩包 |
             | `smart-fish-frontend-dist.zip` | zip 压缩包 |
 
+            #### 🛠️ 辅助文件
+
+            | 文件 | 说明 |
+            |------|------|
+            | `setup.sh` | 一键初始化脚本（检查/安装 MySQL、生成 .env、创建数据库） |
+            | `seed.sql` | 示例数据（可选导入） |
+
             ---
 
-            ### 🚀 快速开始（组合版）
-
-            **前置条件**：仅需 MySQL 5.7+
+            ### 🚀 快速开始（Linux 推荐）
 
             ```bash
-            # 1. 创建配置文件 .env（放在可执行文件同级目录）
-            DB_HOST=127.0.0.1
-            DB_PORT=3306
-            DB_USER=root
-            DB_PASSWORD=your_password
-            DB_NAME=smart_fish
-            JWT_SECRET=your-jwt-secret
-            SERVER_PORT=8080
-            GIN_MODE=release
-            ```
+            # 1. 下载组合版 + 初始化脚本
+            chmod +x smart-fish-combo-linux-amd64 setup.sh
 
-            ```bash
-            # 2. 运行（首次加 --seed 填充示例数据）
-            chmod +x smart-fish-combo-*
+            # 2. 运行初始化脚本（检查 MySQL、生成 .env、创建数据库）
+            ./setup.sh
+
+            # 3. （可选）导入示例数据
+            mysql -u root -p smart_fish < seed.sql
+
+            # 4. 启动服务
             ./smart-fish-combo-linux-amd64 --seed
-            ```
 
-            ```bash
-            # 3. 浏览器打开
+            # 5. 浏览器打开
             http://localhost:8080
             ```
 
@@ -286,6 +306,6 @@ jobs:
             1. 解压 `smart-fish-frontend-dist.zip` 到 Nginx 等 Web 服务器
             2. 配置反向代理，将 `/api/*` 和 `/auth/*` 转发到后端端口
             3. 后端仅提供 API 服务，默认端口 8080
-          files: artifacts/*
+          files: release-files/*
           draft: false
           prerelease: false

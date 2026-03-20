@@ -26,12 +26,9 @@
         </el-menu-item>
         <el-menu-item index="/reminders">
           <el-icon><Bell /></el-icon> 信息中心
-          <el-badge
-            v-if="authStore.isLoggedIn && reminderStore.unresolvedCount > 0"
-            :value="reminderStore.unresolvedCount"
-            :max="99"
-            class="badge-item"
-          />
+        </el-menu-item>
+        <el-menu-item index="/community">
+          <el-icon><ChatDotRound /></el-icon> 钓友社区
         </el-menu-item>
         <el-menu-item index="/profile" v-if="authStore.isLoggedIn">
           <el-icon><User /></el-icon> 个人中心
@@ -69,9 +66,7 @@
 
       <!-- 移动端：汉堡按钮 -->
       <div v-if="isMobile" class="mobile-actions">
-        <el-badge v-if="authStore.isLoggedIn && reminderStore.unresolvedCount > 0" :value="reminderStore.unresolvedCount" :max="9" class="mobile-badge">
-          <el-icon :size="20" @click="router.push('/reminders')"><Bell /></el-icon>
-        </el-badge>
+        <el-icon :size="20" @click="router.push('/reminders')"><Bell /></el-icon>
         <el-icon :size="24" class="hamburger" @click="drawerVisible = true">
           <Menu />
         </el-icon>
@@ -103,8 +98,10 @@
           <el-icon><MapLocation /></el-icon> <span>垂钓水域</span>
         </div>
         <div class="drawer-item" :class="{ active: activeMenu === '/reminders' }" @click="navigateMobile('/reminders')">
-          <el-icon><Bell /></el-icon> <span>提醒中心</span>
-          <el-badge v-if="authStore.isLoggedIn && reminderStore.unresolvedCount > 0" :value="reminderStore.unresolvedCount" class="drawer-badge" />
+          <el-icon><Bell /></el-icon> <span>信息中心</span>
+        </div>
+        <div class="drawer-item" :class="{ active: activeMenu === '/community' }" @click="navigateMobile('/community')">
+          <el-icon><ChatDotRound /></el-icon> <span>钓友社区</span>
         </div>
         <div v-if="authStore.isLoggedIn" class="drawer-item" :class="{ active: activeMenu === '/profile' }" @click="navigateMobile('/profile')">
           <el-icon><User /></el-icon> <span>个人中心</span>
@@ -140,16 +137,14 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useReminderStore } from '@/stores/reminder'
 import {
   Ship, UserFilled, User, SwitchButton, HomeFilled, MapLocation,
-  Bell, Setting, ArrowDown, Menu
+  Bell, Setting, ArrowDown, Menu, ChatDotRound
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
-const reminderStore = useReminderStore()
 
 const activeMenu = computed(() => route.path)
 const isMobile = ref(false)

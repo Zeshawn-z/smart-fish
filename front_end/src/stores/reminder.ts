@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Reminder, PaginatedResponse } from '@/types'
+import type { Reminder } from '@/types'
 import { ReminderService } from '@/services'
 
 export const useReminderStore = defineStore('reminder', () => {
@@ -26,10 +26,10 @@ export const useReminderStore = defineStore('reminder', () => {
   }) {
     isLoading.value = true
     try {
-      const data: PaginatedResponse<Reminder> = await ReminderService.list(params)
-      reminders.value = data.results
-      total.value = data.total
-      page.value = data.page
+      const res = await ReminderService.list(params)
+      reminders.value = res.data
+      total.value = res.total
+      page.value = params?.page ?? 1
     } finally {
       isLoading.value = false
     }

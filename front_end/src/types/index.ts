@@ -14,6 +14,7 @@ export interface User {
   role: 'user' | 'staff' | 'admin'
   phone: string
   email: string
+  avatar?: string | null
   register_time: string
 }
 
@@ -265,4 +266,173 @@ export const DEVICE_TYPE_MAP: Record<DeviceType, string> = {
   environment: '环境监测',
   underwater: '水下感知',
   fishfinder: '探鱼辅助'
+}
+
+// ==================== 社区帖子 ====================
+
+export interface Post extends BaseModel {
+  user_id: number
+  username?: string
+  avatar?: string | null
+  title: string
+  body: string
+  tag: string
+  image_url?: string | string[] | null
+  likes?: number
+  comments?: number
+  is_deleted?: boolean
+  /** @deprecated 旧 v1 字段，新接口使用 id */
+  post_id?: number
+}
+
+export interface PostListResponse {
+  posts_list: Post[]
+}
+
+export interface PostDetail extends Post {
+  image_urls?: string[]
+}
+
+// ==================== 评论 ====================
+
+export interface Comment extends BaseModel {
+  post_id: number
+  user_id: number
+  username?: string
+  avatar?: string | null
+  body: string
+  is_deleted?: boolean
+  /** @deprecated 旧 v1 字段，新接口使用 id */
+  comment_id?: number
+}
+
+export interface CommentListResponse {
+  comments_list: Comment[]
+}
+
+export interface CommentOnComment {
+  coc_id: number
+  comment_id: number
+  user_id: number
+  username: string
+  avatar?: string | null
+  body: string
+  to_coc_id: number | null
+  to_user_id: number | null
+  to_username: string | null
+}
+
+export interface CocListResponse {
+  comment_id: string
+  comments: CommentOnComment[]
+}
+
+// ==================== 垂钓记录 ====================
+
+export interface FishCaught extends BaseModel {
+  record_id: number
+  caught_time: string
+  fish_type: string
+  weight: number
+  bait_type: string
+  bait_weight: number
+  fishing_depth: number
+  image_url?: string | null
+  /** @deprecated 旧 v1 字段，新接口使用 id */
+  fish_id?: number
+}
+
+export interface IoTDeviceData {
+  device_id: string
+  temperature: number
+  humidity: number
+  pulling: number
+  pressure: number
+  gps_info?: string
+  gpsInfo?: string
+  imu_data: string
+  last_update: string
+}
+
+export interface FishingRecord extends BaseModel {
+  user_id: number
+  device_id: string
+  start_time: string
+  end_time: string
+  latitude: number
+  longitude: number
+  fish_caught?: FishCaught[]
+  device_data?: IoTDeviceData
+  /** @deprecated 旧 v1 字段 */
+  caught?: FishCaught[]
+  /** @deprecated 旧 v1 字段，新接口使用 id */
+  record_id?: number
+}
+
+export interface FishingRecordListResponse {
+  records: FishingRecord[]
+}
+
+// ==================== 后台管理配置类型 ====================
+
+/** 表格列配置 */
+export interface ColumnConfig {
+  prop: string
+  label: string
+  width?: number | string
+  minWidth?: number | string
+  align?: 'left' | 'center' | 'right'
+  showOverflow?: boolean
+  formatter?: (row: any) => string
+  render?: (row: any) => string
+  tag?: {
+    label?: (row: any) => string
+    type?: (row: any) => '' | 'success' | 'warning' | 'danger' | 'info'
+  }
+}
+
+/** 表单字段配置（用于新增/编辑） */
+export interface FormFieldConfig {
+  /** 字段标识（对应数据属性名） */
+  prop: string
+  /** 显示标签 */
+  label: string
+  /** 表单控件类型 */
+  type: 'input' | 'textarea' | 'number' | 'select' | 'switch' | 'datetime'
+  /** select 选项 */
+  options?: { label: string; value: string | number }[]
+  /** 是否必填 */
+  required?: boolean
+  /** 占位提示 */
+  placeholder?: string
+  /** 是否只读 */
+  readonly?: boolean
+}
+
+/** 资源管理配置 */
+export interface ResourceConfig {
+  /** 页面标题 */
+  title: string
+  /** 资源标识 (用于缓存键和路由，如 "regions") */
+  resource: string
+  /** 表格列配置 */
+  columns: ColumnConfig[]
+  /** 加载数据 */
+  loadFn: (params: Record<string, any>) => Promise<{ data: any[]; total: number }>
+  /** 删除单条记录 */
+  deleteFn: (id: number) => Promise<void>
+  /** 更新单条记录（如果提供则启用编辑功能） */
+  updateFn?: (id: number, data: Record<string, any>) => Promise<any>
+  /** 创建记录的函数 */
+  createFn?: (data: Record<string, any>) => Promise<any>
+  /** 表单字段配置（用于新增/编辑对话框） */
+  formFields?: FormFieldConfig[]
+  /** 是否支持搜索 */
+  searchable?: boolean
+  /** 是否可新增 */
+  creatable?: boolean
+  /** 是否分页 */
+  paginated?: boolean
+  /** 操作列宽度 */
+  actionWidth?: number
 }

@@ -3,6 +3,6 @@ import type { SystemSummary } from '@/types'
 
 export const SummaryService = {
   async get(): Promise<SystemSummary> {
-    return httpGet<SystemSummary>('/api/summary')
+    return httpGet<SystemSummary>('/api/v2/summary')
   }
 }

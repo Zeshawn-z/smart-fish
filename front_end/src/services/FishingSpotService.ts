@@ -1,51 +1,42 @@
-import { httpGet, httpPost, httpPut, httpDelete } from '@/network/http'
-import type { FishingSpot, PopularSpot, HistoricalData, EnvironmentData, PaginatedResponse } from '@/types'
+import { createResourceService } from './createResourceService'
+import type { FishingSpot, PopularSpot, HistoricalData, EnvironmentData } from '@/types'
 
-export const FishingSpotService = {
-  async list(params?: {
+export const FishingSpotService = createResourceService({
+  name: 'spots',
+  model: {} as FishingSpot,
+  paginated: true,
+  listParams: {} as {
     region_id?: number
     status?: string
     water_type?: string
     search?: string
     page?: number
     page_size?: number
-  }): Promise<PaginatedResponse<FishingSpot>> {
-    return httpGet<PaginatedResponse<FishingSpot>>('/api/spots', params)
   },
+  extend: (ctx) => ({
+    /** 热门水域 */
+    async getPopular(limit?: number): Promise<PopularSpot[]> {
+      return ctx.http.get<PopularSpot[]>(`${ctx.baseURL}/popular`, { limit })
+    },
 
-  async get(id: number): Promise<FishingSpot> {
-    return httpGet<FishingSpot>(`/api/spots/${id}`)
-  },
+    /** 历史垂钓数据 */
+    async getHistorical(spotId: number, limit?: number): Promise<HistoricalData[]> {
+      return ctx.http.get<HistoricalData[]>(`${ctx.baseURL}/${spotId}/historical`, { limit })
+    },
 
-  async getPopular(limit?: number): Promise<PopularSpot[]> {
-    return httpGet<PopularSpot[]>('/api/spots/popular', { limit })
-  },
+    /** 环境数据 */
+    async getEnvironment(spotId: number, limit?: number): Promise<EnvironmentData[]> {
+      return ctx.http.get<EnvironmentData[]>(`${ctx.baseURL}/${spotId}/environment`, { limit })
+    },
 
-  async getHistorical(spotId: number, limit?: number): Promise<HistoricalData[]> {
-    return httpGet<HistoricalData[]>(`/api/spots/${spotId}/historical`, { limit })
-  },
+    /** 收藏/取消收藏 */
+    async toggleFavorite(spotId: number): Promise<{ message: string; favorited: boolean }> {
+      return ctx.http.post<{ message: string; favorited: boolean }>(`${ctx.baseURL}/${spotId}/favor`)
+    },
 
-  async getEnvironment(spotId: number, limit?: number): Promise<EnvironmentData[]> {
-    return httpGet<EnvironmentData[]>(`/api/spots/${spotId}/environment`, { limit })
-  },
-
-  async toggleFavorite(spotId: number): Promise<{ message: string; favorited: boolean }> {
-    return httpPost(`/api/spots/${spotId}/favor`)
-  },
-
-  async getFavorites(): Promise<FishingSpot[]> {
-    return httpGet<FishingSpot[]>('/api/spots/favorites')
-  },
-
-  async create(data: Partial<FishingSpot>): Promise<FishingSpot> {
-    return httpPost<FishingSpot>('/api/spots', data)
-  },
-
-  async update(id: number, data: Partial<FishingSpot>): Promise<FishingSpot> {
-    return httpPut<FishingSpot>(`/api/spots/${id}`, data)
-  },
-
-  async delete(id: number): Promise<void> {
-    return httpDelete(`/api/spots/${id}`)
-  }
-}
+    /** 收藏列表 */
+    async getFavorites(): Promise<FishingSpot[]> {
+      return ctx.http.get<FishingSpot[]>(`${ctx.baseURL}/favorites`)
+    }
+  })
+})

@@ -23,6 +23,18 @@ const router = createRouter({
       meta: { title: '信息中心' }
     },
     {
+      path: '/community',
+      name: 'Community',
+      component: () => import('@/views/CommunityView.vue'),
+      meta: { title: '钓友社区' }
+    },
+    {
+      path: '/community/:id',
+      name: 'PostDetail',
+      component: () => import('@/views/PostDetailView.vue'),
+      meta: { title: '帖子详情' }
+    },
+    {
       path: '/auth',
       name: 'Auth',
       component: () => import('@/views/AuthView.vue'),
@@ -38,7 +50,7 @@ const router = createRouter({
       path: '/admin',
       name: 'Admin',
       component: () => import('@/views/AdminView.vue'),
-      meta: { title: '管理后台', requiresAuth: true, requiresStaff: true }
+      meta: { title: '管理后台', requiresAuth: true, requiresStaff: true, hideFooter: true }
     },
     {
       path: '/:pathMatch(.*)*',

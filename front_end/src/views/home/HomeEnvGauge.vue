@@ -55,11 +55,11 @@
     </div>
 
     <!-- 历史折线图 -->
-    <BaseChart v-if="chartOption" :option="chartOption" height="400px" />
+    <BaseChart v-if="chartOption" :option="chartOption" height="280px" />
     <BaseChart
       v-else
       :option="{ xAxis: { type: 'category', data: [] }, yAxis: { type: 'value' }, series: [] }"
-      height="400px"
+      height="280px"
     />
   </el-card>
 </template>
@@ -111,13 +111,14 @@ const chartOption = computed<EChartsOption | null>(() => {
     },
     legend: {
       data: ['水温', '气温', 'pH', '溶氧'],
-      bottom: 0,
+      top: 0,
+      left: 'center',
       textStyle: { fontSize: 12 },
       itemWidth: 20,
       itemHeight: 10,
       itemGap: 20
     },
-    grid: { left: 50, right: 50, top: 20, bottom: 45 },
+    grid: { left: 50, right: 50, top: 35, bottom: 40 },
     xAxis: {
       type: 'category',
       data: timestamps,

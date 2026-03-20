@@ -8,6 +8,7 @@ import (
 
 func Migrate() {
 	err := DB.AutoMigrate(
+		// 原有模型
 		&models.User{},
 		&models.Region{},
 		&models.FishingSpot{},
@@ -19,6 +20,17 @@ func Migrate() {
 		&models.Reminder{},
 		&models.Notice{},
 		&models.FishingSuggestion{},
+		// Flask SFR 兼容模型
+		&models.Post{},
+		&models.Comment{},
+		&models.CommentOnComments{},
+		&models.Image{},
+		&models.LikeOnPosts{},
+		&models.LikeOnComments{},
+		&models.LikeOnCOCS{},
+		&models.FishingRecord{},
+		&models.FishCaught{},
+		&models.IoTDevice{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
