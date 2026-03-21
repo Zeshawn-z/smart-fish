@@ -6,14 +6,14 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 // ListReminders 获取提醒列表
 func ListReminders(c *gin.Context) {
-	var reminders []models.Reminder
-	query := database.DB
+	query := database.DB.Model(&models.Reminder{})
 
 	if spotID := c.Query("spot_id"); spotID != "" {
 		query = query.Where("spot_id = ?", spotID)
@@ -25,26 +25,7 @@ func ListReminders(c *gin.Context) {
 		query = query.Where("resolved = ?", resolved == "true")
 	}
 
-	// 分页
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	var total int64
-	query.Model(&models.Reminder{}).Count(&total)
-	query.Offset((page - 1) * pageSize).Limit(pageSize).Order("timestamp DESC").Find(&reminders)
-
-	c.JSON(http.StatusOK, gin.H{
-		"results":   reminders,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	utils.Paginate[models.Reminder](c, query, "timestamp DESC")
 }
 
 // GetReminder 获取单个提醒

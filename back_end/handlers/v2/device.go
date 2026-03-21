@@ -6,14 +6,14 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ListDevices 获取设备列表
+// ListDevices 获取设备列表（支持分页）
 func ListDevices(c *gin.Context) {
-	var devices []models.Device
-	query := database.DB
+	query := database.DB.Model(&models.Device{})
 
 	if gatewayID := c.Query("gateway_id"); gatewayID != "" {
 		query = query.Where("gateway_id = ?", gatewayID)
@@ -29,8 +29,7 @@ func ListDevices(c *gin.Context) {
 			"%"+search+"%", "%"+search+"%")
 	}
 
-	query.Order("id DESC").Find(&devices)
-	c.JSON(http.StatusOK, devices)
+	utils.Paginate[models.Device](c, query, "id DESC")
 }
 
 // GetDevice 获取单个设备

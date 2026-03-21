@@ -4,7 +4,8 @@ import type { Region, RegionEnvItem, RegionEnvHistory } from '@/types'
 export const RegionService = createResourceService({
   name: 'regions',
   model: {} as Region,
-  listParams: {} as { province?: string; city?: string; search?: string },
+  paginated: true,
+  listParams: {} as { province?: string; city?: string; search?: string; page?: number; page_size?: number },
   extend: (ctx) => ({
     /** 获取省份列表 */
     async getProvinces(): Promise<string[]> {

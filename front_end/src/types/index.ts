@@ -302,6 +302,10 @@ export interface Comment extends BaseModel {
   avatar?: string | null
   body: string
   is_deleted?: boolean
+  /** 帖子详情嵌入时返回的评论点赞数 */
+  likes?: number
+  /** 帖子详情嵌入时返回的子评论列表 */
+  sub_comments?: CommentOnComment[]
   /** @deprecated 旧 v1 字段，新接口使用 id */
   comment_id?: number
 }

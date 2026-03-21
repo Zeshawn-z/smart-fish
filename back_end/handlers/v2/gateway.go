@@ -6,14 +6,14 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ListGateways 获取网关列表
+// ListGateways 获取网关列表（支持分页）
 func ListGateways(c *gin.Context) {
-	var gateways []models.Gateway
-	query := database.DB
+	query := database.DB.Model(&models.Gateway{}).Preload("Devices")
 
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
@@ -22,8 +22,7 @@ func ListGateways(c *gin.Context) {
 		query = query.Where("name LIKE ?", "%"+search+"%")
 	}
 
-	query.Preload("Devices").Order("id DESC").Find(&gateways)
-	c.JSON(http.StatusOK, gateways)
+	utils.Paginate[models.Gateway](c, query, "id DESC")
 }
 
 // GetGateway 获取单个网关

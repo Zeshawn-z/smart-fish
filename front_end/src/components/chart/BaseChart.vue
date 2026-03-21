@@ -4,10 +4,11 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import * as echarts from 'echarts'
+import echarts from '@/plugins/echarts'
+import type { EChartsOption, ECharts } from '@/plugins/echarts'
 
 const props = withDefaults(defineProps<{
-  option: echarts.EChartsOption
+  option: EChartsOption
   width?: string
   height?: string
 }>(), {
@@ -16,7 +17,7 @@ const props = withDefaults(defineProps<{
 })
 
 const chartRef = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
+let chart: ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
 
 function initChart() {

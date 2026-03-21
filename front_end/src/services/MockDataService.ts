@@ -33,12 +33,12 @@ export const MOCK_DEVICES: Device[] = [
 
 // ===== 模拟垂钓水域 =====
 export const MOCK_SPOTS: FishingSpot[] = [
-  { id: 1, name: '松花江北岸休闲钓场', region_id: 1, region: MOCK_REGIONS[0], description: '松花江北岸优质钓场，交通便利，水质清澈，鱼种丰富', latitude: 45.75, longitude: 126.65, water_type: 'river', capacity: 80, status: 'open', bound_device_id: 1, bound_device: MOCK_DEVICES[0], created_at: daysAgo(30), updated_at: hoursAgo(1) },
-  { id: 2, name: '太阳岛湖心垂钓', region_id: 2, region: MOCK_REGIONS[1], description: '太阳岛核心区域，环境优美，适合家庭垂钓', latitude: 45.77, longitude: 126.62, water_type: 'lake', capacity: 50, status: 'open', bound_device_id: 2, bound_device: MOCK_DEVICES[1], created_at: daysAgo(30), updated_at: hoursAgo(2) },
-  { id: 3, name: '镜泊湖深水区', region_id: 3, region: MOCK_REGIONS[2], description: '镜泊湖深水垂钓区，大鱼多，需一定技术', latitude: 43.88, longitude: 128.98, water_type: 'lake', capacity: 120, status: 'open', bound_device_id: 5, bound_device: MOCK_DEVICES[4], created_at: daysAgo(30), updated_at: hoursAgo(3) },
-  { id: 4, name: '兴凯湖湿地钓场', region_id: 4, region: MOCK_REGIONS[3], description: '兴凯湖边缘湿地区域，生态丰富', latitude: 45.32, longitude: 132.40, water_type: 'lake', capacity: 60, status: 'open', bound_device_id: 6, bound_device: MOCK_DEVICES[5], created_at: daysAgo(30), updated_at: hoursAgo(4) },
-  { id: 5, name: '呼兰河水库', region_id: 1, region: MOCK_REGIONS[0], description: '呼兰河上游水库，水域平静，适合初学者', latitude: 45.95, longitude: 126.58, water_type: 'reservoir', capacity: 40, status: 'maintenance', bound_device_id: 3, bound_device: MOCK_DEVICES[2], created_at: daysAgo(30), updated_at: daysAgo(2) },
-  { id: 6, name: '松北鱼塘乐园', region_id: 1, region: MOCK_REGIONS[0], description: '专业鱼塘，提供钓具租赁和指导服务', latitude: 45.80, longitude: 126.55, water_type: 'pond', capacity: 30, status: 'closed', created_at: daysAgo(30), updated_at: daysAgo(5) },
+  { id: 1, name: '松花江北岸休闲钓场', region_id: 1, region: MOCK_REGIONS[0], description: '松花江北岸优质钓场，交通便利，水质清澈，鱼种丰富', latitude: 45.7680, longitude: 126.6180, water_type: 'river', capacity: 80, status: 'open', bound_device_id: 1, bound_device: MOCK_DEVICES[0], created_at: daysAgo(30), updated_at: hoursAgo(1) },
+  { id: 2, name: '太阳岛湖心垂钓', region_id: 2, region: MOCK_REGIONS[1], description: '太阳岛核心区域，环境优美，适合家庭垂钓', latitude: 45.7920, longitude: 126.5500, water_type: 'lake', capacity: 50, status: 'open', bound_device_id: 2, bound_device: MOCK_DEVICES[1], created_at: daysAgo(30), updated_at: hoursAgo(2) },
+  { id: 3, name: '镜泊湖深水区', region_id: 3, region: MOCK_REGIONS[2], description: '镜泊湖深水垂钓区，大鱼多，需一定技术', latitude: 43.8800, longitude: 128.9800, water_type: 'lake', capacity: 120, status: 'open', bound_device_id: 5, bound_device: MOCK_DEVICES[4], created_at: daysAgo(30), updated_at: hoursAgo(3) },
+  { id: 4, name: '兴凯湖湿地钓场', region_id: 4, region: MOCK_REGIONS[3], description: '兴凯湖边缘湿地区域，生态丰富', latitude: 45.3200, longitude: 132.4000, water_type: 'lake', capacity: 60, status: 'open', bound_device_id: 6, bound_device: MOCK_DEVICES[5], created_at: daysAgo(30), updated_at: hoursAgo(4) },
+  { id: 5, name: '呼兰河水库', region_id: 1, region: MOCK_REGIONS[0], description: '呼兰河上游水库，水域平静，适合初学者', latitude: 46.0650, longitude: 126.5850, water_type: 'reservoir', capacity: 40, status: 'maintenance', bound_device_id: 3, bound_device: MOCK_DEVICES[2], created_at: daysAgo(30), updated_at: daysAgo(2) },
+  { id: 6, name: '松北鱼塘乐园', region_id: 1, region: MOCK_REGIONS[0], description: '专业鱼塘，提供钓具租赁和指导服务', latitude: 45.8450, longitude: 126.4750, water_type: 'pond', capacity: 30, status: 'closed', created_at: daysAgo(30), updated_at: daysAgo(5) },
 ]
 
 // ===== 模拟热门水域 =====

@@ -4,5 +4,6 @@ import type { Device } from '@/types'
 export const DeviceService = createResourceService({
   name: 'devices',
   model: {} as Device,
-  listParams: {} as { gateway_id?: number; status?: string; device_type?: string; search?: string }
+  paginated: true,
+  listParams: {} as { gateway_id?: number; status?: string; device_type?: string; search?: string; page?: number; page_size?: number }
 })

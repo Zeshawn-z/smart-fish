@@ -11,6 +11,7 @@ import (
 	v2 "smart-fish/back_end/handlers/v2"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -190,6 +191,7 @@ func Setup(r *gin.Engine, frontendFS *embed.FS) {
 	fishingRecords := apiv2.Group("/fishing-records")
 	{
 		fishingRecords.GET("", v2.ListFishingRecords)
+		fishingRecords.GET("/stats", middleware.AuthRequired(), v2.GetMyFishingStats)
 		fishingRecords.GET("/:id", v2.GetFishingRecordByID)
 
 		fishingRecordsWrite := fishingRecords.Group("", middleware.AuthRequired())
@@ -234,13 +236,10 @@ func Setup(r *gin.Engine, frontendFS *embed.FS) {
 	users := apiv2.Group("/users", middleware.AuthRequired(), middleware.AdminRequired())
 	{
 		users.GET("", func(c *gin.Context) {
-			var userList []models.User
-			database.DB.Order("id DESC").Find(&userList)
-			var responses []models.UserResponse
-			for _, u := range userList {
-				responses = append(responses, u.ToResponse())
-			}
-			c.JSON(http.StatusOK, responses)
+			query := database.DB.Model(&models.User{})
+			utils.PaginateMap[models.User, models.UserResponse](c, query, "id DESC", func(u models.User) models.UserResponse {
+				return u.ToResponse()
+			})
 		})
 		users.PATCH("/:id/role", func(c *gin.Context) {
 			var input struct {
@@ -311,6 +310,9 @@ func Setup(r *gin.Engine, frontendFS *embed.FS) {
 		apiv1.POST("/image/comment", middleware.FlaskAuthRequired(), v1.UploadCommentImage)
 		apiv1.POST("/image/fish", middleware.FlaskAuthRequired(), v1.UploadFishImage)
 		apiv1.POST("/image/avatar", middleware.FlaskAuthRequired(), v1.UploadAvatarImage)
+
+		// --- 天气 ---
+		apiv1.GET("/getWeather", v1.GetWeather)
 
 		// --- IoT 设备 ---
 		apiv1.POST("/iot", v1.PostIoTData)

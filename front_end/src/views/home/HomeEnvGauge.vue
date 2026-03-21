@@ -68,7 +68,7 @@
 import { computed } from 'vue'
 import BaseChart from '@/components/chart/BaseChart.vue'
 import type { EnvironmentData, PopularSpot } from '@/types'
-import type { EChartsOption } from 'echarts'
+import type { EChartsOption } from '@/plugins/echarts'
 import { Odometer } from '@element-plus/icons-vue'
 
 const props = defineProps<{

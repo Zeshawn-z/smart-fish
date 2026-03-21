@@ -71,14 +71,14 @@
     </div>
 
     <!-- 分页 -->
-    <div class="manager-footer" v-if="config.paginated && totalCount > pageSize">
+    <div class="manager-footer" v-if="totalCount > pageSize">
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"
         :total="totalCount"
         layout="total, prev, pager, next, jumper"
         background
-        @current-change="loadData"
+        @current-change="handlePageChange"
       />
     </div>
 
@@ -189,7 +189,7 @@ const tableData = ref<any[]>([])
 const loading = ref(false)
 const searchText = ref('')
 const currentPage = ref(1)
-const pageSize = 20
+const pageSize = 12
 const totalCount = ref(0)
 
 // ===== 对话框状态 =====
@@ -201,16 +201,14 @@ const editingRowId = ref<number | null>(null)
 
 const formFields = computed<FormFieldConfig[]>(() => props.config.formFields || [])
 
-// ===== 数据加载 =====
+// ===== 数据加载（后端分页） =====
 async function loadData() {
   loading.value = true
   try {
     const params: Record<string, any> = {}
     if (searchText.value) params.search = searchText.value
-    if (props.config.paginated) {
-      params.page = currentPage.value
-      params.page_size = pageSize
-    }
+    params.page = currentPage.value
+    params.page_size = pageSize
     const result = await props.config.loadFn(params)
     tableData.value = result.data
     totalCount.value = result.total
@@ -224,6 +222,11 @@ async function loadData() {
 
 function onSearch() {
   currentPage.value = 1
+  loadData()
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
   loadData()
 }
 

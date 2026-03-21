@@ -90,7 +90,9 @@
     <!-- 底部用户信息 -->
     <div class="sidebar-footer">
       <div class="sidebar-user">
-        <el-avatar :size="30" :icon="UserFilled" class="sidebar-avatar" />
+        <el-avatar :size="30" :src="sidebarAvatar.src" :style="sidebarAvatar.hasAvatar ? {} : sidebarAvatar.style" class="sidebar-avatar">
+          {{ sidebarAvatar.hasAvatar ? '' : sidebarAvatar.letter }}
+        </el-avatar>
         <div class="sidebar-user-info">
           <span class="sidebar-username">{{ username }}</span>
           <span class="sidebar-role">{{ roleName }}</span>
@@ -105,12 +107,15 @@
 
 <script setup lang="ts">
 import {
-  Ship, MapLocation, Location, Monitor, Connection, Bell,
-  Notification, User, UserFilled, SwitchButton, Folder, Operation,
+  MapLocation, Location, Monitor, Connection, Bell,
+  Notification, User, SwitchButton, Folder, Operation,
   ChatDotRound, Document, Cpu, DataLine, ChatLineSquare, Trophy, Compass
 } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useAvatar } from '@/composables/useAvatar'
 
-defineProps<{
+const props = defineProps<{
   active: string
   showUsers: boolean
   username: string
@@ -121,6 +126,9 @@ defineEmits<{
   (e: 'update:active', value: string): void
   (e: 'logout'): void
 }>()
+
+const authStore = useAuthStore()
+const sidebarAvatar = computed(() => useAvatar(authStore.user?.avatar, props.username))
 </script>
 
 <style scoped>
@@ -187,7 +195,6 @@ defineEmits<{
 }
 
 .sidebar-avatar {
-  background: #409eff;
   flex-shrink: 0;
 }
 

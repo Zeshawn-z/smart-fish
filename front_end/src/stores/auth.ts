@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User } from '@/types'
 import { AuthService } from '@/services'
+import { registerAuthCallbacks } from '@/network/axios'
 
 const TOKEN_REFRESH_INTERVAL = 50 * 60 * 1000 // 50分钟
 const TOKEN_MAX_AGE = 3 * 24 * 60 * 60 * 1000 // 3天
@@ -110,6 +111,16 @@ export const useAuthStore = defineStore('auth', () => {
 
   // 初始化：检查 token 是否过期
   async function initialize() {
+    // 注册 axios 拦截器回调，让 token 刷新/失败时同步更新 store
+    registerAuthCallbacks(
+      (newToken: string) => {
+        accessToken.value = newToken
+      },
+      () => {
+        logout()
+      }
+    )
+
     const tokenTime = localStorage.getItem('token_time')
     if (tokenTime) {
       const elapsed = Date.now() - parseInt(tokenTime)

@@ -27,7 +27,8 @@ export const PostService = createResourceService({
 export const CommentService = createResourceService({
   name: 'comments',
   model: {} as CommentType,
-  listParams: {} as { post_id?: number }
+  paginated: true,
+  listParams: {} as { post_id?: number; page?: number; page_size?: number }
 })
 
 /**
@@ -58,6 +59,8 @@ export const CommunityService = {
   // ===== 评论 =====
 
   async getComments(postId: number) {
+    // 绕过缓存直接请求，确保评论数据实时准确
+    CommentService.invalidateCache()
     const res = await CommentService.list({ post_id: postId })
     return { comments_list: res.data }
   },

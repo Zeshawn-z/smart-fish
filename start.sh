@@ -89,8 +89,9 @@ echo -e "${CYAN}请选择启动模式:${NC}"
 echo "  1) 前后端一起启动（推荐）"
 echo "  2) 仅启动前端（使用 Mock 数据）"
 echo "  3) 仅启动后端"
+echo "  4) 前后端一起启动 + 重置种子数据"
 echo ""
-read -p "请输入选项 [1/2/3，默认 1]: " MODE
+read -p "请输入选项 [1/2/3/4，默认 1]: " MODE
 MODE=${MODE:-1}
 
 # 清理函数
@@ -113,6 +114,8 @@ FRONTEND_PID=""
 
 # ===== 3. 启动后端 =====
 start_backend() {
+  local SEED_FLAG="$1"
+
   info "正在构建后端..."
   cd "$BACKEND_DIR"
 
@@ -131,8 +134,13 @@ start_backend() {
   success "后端编译成功"
 
   # 启动
-  info "正在启动后端服务 (端口 8080)..."
-  ./smart-fish-server &
+  if [ "$SEED_FLAG" = "--seed" ]; then
+    info "正在启动后端服务 (端口 8080) [含种子数据]..."
+    ./smart-fish-server --seed &
+  else
+    info "正在启动后端服务 (端口 8080)..."
+    ./smart-fish-server &
+  fi
   BACKEND_PID=$!
   sleep 2
 
@@ -191,6 +199,13 @@ case $MODE in
     echo ""
     start_backend
     ;;
+  4)
+    info "模式: 前后端同时启动 + 重置种子数据"
+    echo ""
+    start_backend --seed
+    echo ""
+    start_frontend
+    ;;
   *)
     error "无效选项: $MODE"
     exit 1
@@ -203,10 +218,10 @@ echo -e "${GREEN}  服务已启动！按 Ctrl+C 停止所有服务${NC}"
 echo -e "${CYAN}════════════════════════════════════════${NC}"
 echo ""
 
-if [ "$MODE" = "1" ] || [ "$MODE" = "2" ]; then
+if [ "$MODE" = "1" ] || [ "$MODE" = "2" ] || [ "$MODE" = "4" ]; then
   echo -e "  前端地址: ${GREEN}http://localhost:5173${NC}"
 fi
-if [ "$MODE" = "1" ] || [ "$MODE" = "3" ]; then
+if [ "$MODE" = "1" ] || [ "$MODE" = "3" ] || [ "$MODE" = "4" ]; then
   echo -e "  后端地址: ${GREEN}http://localhost:8080${NC}"
 fi
 echo ""

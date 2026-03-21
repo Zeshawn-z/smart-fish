@@ -20,13 +20,26 @@
       </div>
     </div>
 
+    <!-- 搜索栏 -->
+    <div class="search-bar">
+      <el-input
+        v-model="searchInput"
+        placeholder="搜索帖子标题或内容..."
+        :prefix-icon="Search"
+        clearable
+        size="large"
+        @keyup.enter="handleSearch"
+        @clear="handleSearch"
+      />
+    </div>
+
     <!-- 标签过滤 -->
     <div class="tag-bar">
       <div class="tag-list">
         <button
           class="tag-btn"
-          :class="{ active: activeTag === '' }"
-          @click="activeTag = ''"
+          :class="{ active: communityStore.activeTag === '' }"
+          @click="setTag('')"
         >
           全部
         </button>
@@ -34,8 +47,8 @@
           v-for="t in TAGS"
           :key="t"
           class="tag-btn"
-          :class="{ active: activeTag === t }"
-          @click="activeTag = t"
+          :class="{ active: communityStore.activeTag === t }"
+          @click="setTag(t)"
         >
           {{ TAG_ICONS[t] || '' }} {{ t }}
         </button>
@@ -43,18 +56,31 @@
     </div>
 
     <!-- 帖子列表 -->
-    <div v-loading="communityStore.isLoading" class="post-list">
+    <div v-loading="communityStore.isLoading && communityStore.posts.length === 0" class="post-list">
       <el-empty
-        v-if="filteredPosts.length === 0 && !communityStore.isLoading"
+        v-if="communityStore.posts.length === 0 && !communityStore.isLoading"
         description="暂无帖子，快来发第一篇吧！"
         :image-size="120"
       />
       <PostCard
-        v-for="post in filteredPosts"
+        v-for="post in communityStore.posts"
         :key="post.id"
         :post="post"
         @click="router.push(`/community/${post.id}`)"
       />
+    </div>
+
+    <!-- 加载更多 -->
+    <div v-if="communityStore.posts.length > 0" class="load-more-wrap">
+      <el-button
+        v-if="communityStore.hasMore"
+        :loading="communityStore.isLoading"
+        round
+        @click="communityStore.loadMore()"
+      >
+        {{ communityStore.isLoading ? '加载中...' : '加载更多' }}
+      </el-button>
+      <span v-else class="no-more">没有更多了</span>
     </div>
 
     <!-- 发帖对话框 -->
@@ -63,9 +89,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { EditPen } from '@element-plus/icons-vue'
+import { EditPen, Search } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCommunityStore } from '@/stores/community'
 
@@ -85,13 +111,18 @@ const router = useRouter()
 const authStore = useAuthStore()
 const communityStore = useCommunityStore()
 
-const activeTag = ref('')
 const showCreateDialog = ref(false)
+const searchInput = ref('')
 
-const filteredPosts = computed(() => {
-  if (!activeTag.value) return communityStore.posts
-  return communityStore.posts.filter(p => p.tag === activeTag.value)
-})
+function setTag(tag: string) {
+  communityStore.activeTag = tag
+  communityStore.fetchPosts()
+}
+
+function handleSearch() {
+  communityStore.searchKeyword = searchInput.value.trim()
+  communityStore.fetchPosts()
+}
 
 onMounted(() => {
   communityStore.fetchPosts()
@@ -159,6 +190,16 @@ onMounted(() => {
   margin: 0;
 }
 
+/* ===== Search Bar ===== */
+.search-bar {
+  margin-bottom: 16px;
+}
+
+.search-bar :deep(.el-input__wrapper) {
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
 /* ===== Tag Bar ===== */
 .tag-bar {
   margin-bottom: 20px;
@@ -200,7 +241,18 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-bottom: 40px;
+}
+
+/* ===== Load More ===== */
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0 40px;
+}
+
+.no-more {
+  font-size: 13px;
+  color: #a0a4ad;
 }
 
 @media (max-width: 768px) {

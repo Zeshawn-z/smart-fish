@@ -7,6 +7,7 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -122,24 +123,78 @@ func fishingRecordToDTO(r models.FishingRecord) FishingRecordDTO {
 
 // ==================== Fishing Records Handlers ====================
 
-// ListFishingRecords GET /api/fishing-records - 垂钓记录列表
+// GetMyFishingStats GET /api/fishing-records/stats - 当前用户的垂钓统计
+func GetMyFishingStats(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
+	uid := userID.(uint)
+
+	// 总出钓次数
+	var totalTrips int64
+	database.DB.Model(&models.FishingRecord{}).Where("user_id = ? AND is_deleted = ?", uid, false).Count(&totalTrips)
+
+	// 总渔获数量 + 总重量 + 最大单条重量
+	type FishAgg struct {
+		TotalFish int64   `json:"total_fish"`
+		TotalKg   float64 `json:"total_kg"`
+		MaxKg     float64 `json:"max_kg"`
+	}
+	var fishAgg FishAgg
+	database.DB.Model(&models.FishCaught{}).
+		Select("COUNT(*) as total_fish, COALESCE(SUM(weight), 0) as total_kg, COALESCE(MAX(weight), 0) as max_kg").
+		Where("record_id IN (?)",
+			database.DB.Model(&models.FishingRecord{}).Select("record_id").Where("user_id = ? AND is_deleted = ?", uid, false),
+		).Scan(&fishAgg)
+
+	// 总垂钓时长（小时）— MySQL 使用 TIMESTAMPDIFF
+	type DurationAgg struct {
+		TotalHours float64 `json:"total_hours"`
+	}
+	var durAgg DurationAgg
+	database.DB.Model(&models.FishingRecord{}).
+		Select("COALESCE(SUM(TIMESTAMPDIFF(MINUTE, start_time, end_time)) / 60.0, 0) as total_hours").
+		Where("user_id = ? AND is_deleted = ?", uid, false).
+		Scan(&durAgg)
+
+	// 鱼种分布 Top 5
+	type FishTypeCount struct {
+		FishType string `json:"fish_type"`
+		Count    int64  `json:"count"`
+	}
+	var fishTypes []FishTypeCount
+	database.DB.Model(&models.FishCaught{}).
+		Select("fish_type, COUNT(*) as count").
+		Where("record_id IN (?)",
+			database.DB.Model(&models.FishingRecord{}).Select("record_id").Where("user_id = ? AND is_deleted = ?", uid, false),
+		).
+		Group("fish_type").
+		Order("count DESC").
+		Limit(5).
+		Scan(&fishTypes)
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_trips":  totalTrips,
+		"total_fish":   fishAgg.TotalFish,
+		"total_kg":     fishAgg.TotalKg,
+		"max_kg":       fishAgg.MaxKg,
+		"total_hours":  durAgg.TotalHours,
+		"fish_types":   fishTypes,
+	})
+}
+
+// ListFishingRecords GET /api/fishing-records - 垂钓记录列表（支持分页）
 func ListFishingRecords(c *gin.Context) {
 	query := database.DB.Model(&models.FishingRecord{}).Where("is_deleted = ?", false)
 
-	// 按用户筛选（管理后台看全部，普通用户可传 user_id=self 看自己的）
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		query = query.Where("user_id = ?", userIDStr)
 	}
 
-	var records []models.FishingRecord
-	query.Order("record_id DESC").Find(&records)
-
-	dtos := make([]FishingRecordDTO, 0, len(records))
-	for _, r := range records {
-		dtos = append(dtos, fishingRecordToDTO(r))
-	}
-
-	c.JSON(http.StatusOK, dtos)
+	utils.PaginateMap[models.FishingRecord, FishingRecordDTO](c, query, "record_id DESC", fishingRecordToDTO)
 }
 
 // GetFishingRecordByID GET /api/fishing-records/:id
@@ -226,7 +281,7 @@ func DeleteFishingRecordV2(c *gin.Context) {
 
 // ==================== Fish Caught Handlers ====================
 
-// ListFishCaught GET /api/fish-caught?record_id=X
+// ListFishCaught GET /api/fish-caught?record_id=X（支持分页）
 func ListFishCaught(c *gin.Context) {
 	query := database.DB.Model(&models.FishCaught{})
 
@@ -234,15 +289,7 @@ func ListFishCaught(c *gin.Context) {
 		query = query.Where("record_id = ?", recordID)
 	}
 
-	var fishes []models.FishCaught
-	query.Order("fish_id DESC").Find(&fishes)
-
-	dtos := make([]FishCaughtDTO, 0, len(fishes))
-	for _, f := range fishes {
-		dtos = append(dtos, fishCaughtToDTO(f))
-	}
-
-	c.JSON(http.StatusOK, dtos)
+	utils.PaginateMap[models.FishCaught, FishCaughtDTO](c, query, "fish_id DESC", fishCaughtToDTO)
 }
 
 // CreateFishCaughtV2 POST /api/fish-caught
@@ -301,14 +348,12 @@ func CreateFishCaughtV2(c *gin.Context) {
 
 // ==================== IoT Devices Handlers ====================
 
-// ListIoTDevices GET /api/iot-devices
+// ListIoTDevices GET /api/iot-devices（支持分页）
 func ListIoTDevices(c *gin.Context) {
-	var devices []models.IoTDevice
-	database.DB.Order("device_id ASC").Find(&devices)
+	query := database.DB.Model(&models.IoTDevice{})
 
-	dtos := make([]IoTDeviceDTO, 0, len(devices))
-	for _, d := range devices {
-		dtos = append(dtos, IoTDeviceDTO{
+	utils.PaginateMap[models.IoTDevice, IoTDeviceDTO](c, query, "device_id ASC", func(d models.IoTDevice) IoTDeviceDTO {
+		return IoTDeviceDTO{
 			DeviceID:    d.DeviceID,
 			Temperature: d.Temperature,
 			Humidity:    d.Humidity,
@@ -317,10 +362,8 @@ func ListIoTDevices(c *gin.Context) {
 			GpsInfo:     d.GpsInfo,
 			ImuData:     d.ImuData,
 			LastUpdate:  d.LastUpdate,
-		})
-	}
-
-	c.JSON(http.StatusOK, dtos)
+		}
+	})
 }
 
 // GetIoTDeviceByID GET /api/iot-devices/:device_id

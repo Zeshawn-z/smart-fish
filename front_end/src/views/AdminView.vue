@@ -126,7 +126,7 @@ const resourceConfigs: Record<string, ResourceConfig> = {
         options: Object.entries(SPOT_STATUS_MAP).map(([k, v]) => ({ label: v, value: k }))
       }
     ],
-    loadFn: (params) => FishingSpotService.list({ ...params, page_size: params.page_size || 100 }),
+    loadFn: (params) => FishingSpotService.list(params),
     createFn: (data) => FishingSpotService.create(data),
     updateFn: (id, data) => FishingSpotService.update(id, data),
     deleteFn: (id) => FishingSpotService.delete(id)
@@ -216,7 +216,7 @@ const resourceConfigs: Record<string, ResourceConfig> = {
         ]
       }
     ],
-    loadFn: () => GatewayService.list(),
+    loadFn: (params) => GatewayService.list(params),
     createFn: (data) => GatewayService.create(data),
     updateFn: (id, data) => GatewayService.update(id, data),
     deleteFn: (id) => GatewayService.delete(id)
@@ -266,7 +266,7 @@ const resourceConfigs: Record<string, ResourceConfig> = {
       { prop: 'spot_id', label: '关联水域ID', type: 'number', required: true },
       { prop: 'resolved', label: '已解决', type: 'switch' }
     ],
-    loadFn: (params) => ReminderService.list({ ...params, page_size: params.page_size || 100 }),
+    loadFn: (params) => ReminderService.list(params),
     createFn: (data) => ReminderService.create(data),
     deleteFn: (id) => ReminderService.delete(id)
   },
@@ -295,7 +295,7 @@ const resourceConfigs: Record<string, ResourceConfig> = {
       { prop: 'content', label: '内容', type: 'textarea', required: true },
       { prop: 'outdated', label: '已过期', type: 'switch' }
     ],
-    loadFn: (params) => NoticeService.list({ ...params, page_size: params.page_size || 100 }),
+    loadFn: (params) => NoticeService.list(params),
     createFn: (data) => NoticeService.create(data),
     updateFn: (id, data) => NoticeService.update(id, data),
     deleteFn: (id) => NoticeService.delete(id)
@@ -335,9 +335,9 @@ const resourceConfigs: Record<string, ResourceConfig> = {
         ]
       }
     ],
-    loadFn: async () => {
-      const data = await httpGet<any[]>('/api/v2/users')
-      return { data, total: data.length }
+    loadFn: async (params) => {
+      const res = await httpGet<{ results: any[]; total: number }>('/api/v2/users', params)
+      return { data: res.results, total: res.total }
     },
     updateFn: async (id, data) => {
       await httpPatch(`/api/v2/users/${id}/role`, { role: data.role })
@@ -466,8 +466,8 @@ const resourceConfigs: Record<string, ResourceConfig> = {
         formatter: (row) => row.last_update?.replace('T', ' ').slice(0, 19) || '--'
       }
     ],
-    loadFn: async () => {
-      return IoTDeviceService.list()
+    loadFn: async (params) => {
+      return IoTDeviceService.list(params)
     },
     deleteFn: async (_id) => {
       throw new Error('IoT设备不支持删除')
