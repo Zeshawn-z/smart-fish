@@ -7,6 +7,7 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,11 +44,10 @@ type CommentDTO struct {
 }
 
 func postToDTO(post models.Post) PostDTO {
-	now := time.Now().Format(time.RFC3339)
 	dto := PostDTO{
 		ID:        post.PostID,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt: post.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: post.UpdatedAt.Format(time.RFC3339),
 		UserID:    post.UserID,
 		Title:     post.Title,
 		Body:      post.Body,
@@ -77,11 +77,10 @@ func postToDTO(post models.Post) PostDTO {
 }
 
 func commentToDTO(comment models.Comment) CommentDTO {
-	now := time.Now().Format(time.RFC3339)
 	dto := CommentDTO{
 		ID:        comment.CommentID,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt: comment.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: comment.UpdatedAt.Format(time.RFC3339),
 		PostID:    comment.PostID,
 		UserID:    comment.UserID,
 		Body:      comment.Body,
@@ -109,15 +108,6 @@ func getUserAvatarURL(userID uint) *string {
 
 // ListPosts GET /api/posts - 帖子列表（分页）
 func ListPosts(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
 	query := database.DB.Model(&models.Post{}).Where("is_deleted = ?", false)
 
 	if tag := c.Query("tag"); tag != "" {
@@ -130,26 +120,17 @@ func ListPosts(c *gin.Context) {
 		query = query.Where("user_id = ?", userID)
 	}
 
-	var total int64
-	query.Count(&total)
-
-	var posts []models.Post
-	query.Order("post_id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&posts)
-
-	dtos := make([]PostDTO, 0, len(posts))
-	for _, p := range posts {
-		dtos = append(dtos, postToDTO(p))
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"results":   dtos,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	utils.PaginateMap[models.Post, PostDTO](c, query, "post_id DESC", postToDTO)
 }
 
-// GetPost GET /api/posts/:id - 帖子详情
+// FullCommentDTO 帖子详情中嵌入的完整评论（含子评论 + 点赞数）
+type FullCommentDTO struct {
+	CommentDTO
+	Likes       int64    `json:"likes"`
+	SubComments []CocDTO `json:"sub_comments"`
+}
+
+// GetPost GET /api/posts/:id - 帖子详情（含完整评论数据）
 func GetPostByID(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -173,19 +154,158 @@ func GetPostByID(c *gin.Context) {
 		imageURLs = append(imageURLs, img.ImageURL)
 	}
 
+	// ===== 嵌入完整评论数据（含子评论 + 点赞数），消灭前端 N+1 请求 =====
+
+	// 1. 查询所有评论
+	var comments []models.Comment
+	database.DB.Where("post_id = ? AND is_deleted = ?", post.PostID, false).Order("comment_id ASC").Find(&comments)
+
+	// 2. 批量收集所有需要查询的用户 ID
+	userIDSet := map[uint]bool{}
+	for _, c := range comments {
+		userIDSet[c.UserID] = true
+	}
+
+	// 3. 查询所有评论的子评论
+	commentIDs := make([]uint, 0, len(comments))
+	for _, c := range comments {
+		commentIDs = append(commentIDs, c.CommentID)
+	}
+
+	var allCocs []models.CommentOnComments
+	if len(commentIDs) > 0 {
+		database.DB.Where("comment_id IN ? AND is_deleted = ?", commentIDs, false).Find(&allCocs)
+	}
+
+	// 收集子评论中的用户 ID
+	for _, coc := range allCocs {
+		userIDSet[coc.UserID] = true
+	}
+
+	// 4. 批量查询所有相关用户（一次 DB 查询）
+	userIDs := make([]uint, 0, len(userIDSet))
+	for uid := range userIDSet {
+		userIDs = append(userIDs, uid)
+	}
+	var users []models.User
+	userMap := map[uint]models.User{}
+	if len(userIDs) > 0 {
+		database.DB.Where("id IN ?", userIDs).Find(&users)
+		for _, u := range users {
+			userMap[u.ID] = u
+		}
+	}
+
+	// 5. 批量查询评论点赞数（一次聚合查询）
+	type likeCount struct {
+		CommentID uint
+		Cnt       int64
+	}
+	var commentLikes []likeCount
+	commentLikesMap := map[uint]int64{}
+	if len(commentIDs) > 0 {
+		database.DB.Model(&models.LikeOnComments{}).
+			Select("comment_id, count(*) as cnt").
+			Where("comment_id IN ?", commentIDs).
+			Group("comment_id").
+			Scan(&commentLikes)
+		for _, cl := range commentLikes {
+			commentLikesMap[cl.CommentID] = cl.Cnt
+		}
+	}
+
+	// 6. 批量查询用户头像（一次查询）
+	avatarMap := map[uint]string{}
+	if len(userIDs) > 0 {
+		var avatars []models.Image
+		database.DB.Where("user_id IN ? AND is_avatar = ? AND is_deleted = ?", userIDs, true, false).Find(&avatars)
+		for _, a := range avatars {
+			avatarMap[a.UserID] = a.ImageURL
+		}
+	}
+
+	// 7. 按 comment_id 分组子评论
+	cocsByComment := map[uint][]models.CommentOnComments{}
+	for _, coc := range allCocs {
+		cocsByComment[coc.CommentID] = append(cocsByComment[coc.CommentID], coc)
+	}
+
+	// 辅助：根据 userID 获取头像指针
+	getAvatar := func(uid uint) *string {
+		if url, ok := avatarMap[uid]; ok {
+			return &url
+		}
+		return nil
+	}
+
+	// 8. 组装完整评论 DTO
+	fullComments := make([]FullCommentDTO, 0, len(comments))
+	for _, comment := range comments {
+		cdto := CommentDTO{
+			ID:        comment.CommentID,
+			CreatedAt: comment.CreatedAt.Format(time.RFC3339),
+			UpdatedAt: comment.UpdatedAt.Format(time.RFC3339),
+			PostID:    comment.PostID,
+			UserID:    comment.UserID,
+			Body:      comment.Body,
+			Avatar:    getAvatar(comment.UserID),
+		}
+		if u, ok := userMap[comment.UserID]; ok {
+			cdto.Username = u.Username
+		}
+
+		// 子评论
+		subDtos := make([]CocDTO, 0)
+		if cocs, ok := cocsByComment[comment.CommentID]; ok {
+			for _, coc := range cocs {
+				sd := CocDTO{
+					CocID:     coc.CocID,
+					CommentID: coc.CommentID,
+					UserID:    coc.UserID,
+					Body:      coc.Body,
+					ToCocID:   coc.ToCocID,
+					Avatar:    getAvatar(coc.UserID),
+				}
+				if u, ok := userMap[coc.UserID]; ok {
+					sd.Username = u.Username
+				}
+				if coc.ToCocID != nil {
+					// 找到被回复的子评论的用户
+					for _, tc := range allCocs {
+						if tc.CocID == *coc.ToCocID {
+							sd.ToUserID = &tc.UserID
+							if tu, ok := userMap[tc.UserID]; ok {
+								sd.ToUsername = &tu.Username
+							}
+							break
+						}
+					}
+				}
+				subDtos = append(subDtos, sd)
+			}
+		}
+
+		fullComments = append(fullComments, FullCommentDTO{
+			CommentDTO:  cdto,
+			Likes:       commentLikesMap[comment.CommentID],
+			SubComments: subDtos,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"id":         dto.ID,
-		"created_at": dto.CreatedAt,
-		"updated_at": dto.UpdatedAt,
-		"user_id":    dto.UserID,
-		"username":   dto.Username,
-		"avatar":     dto.Avatar,
-		"title":      dto.Title,
-		"body":       dto.Body,
-		"tag":        dto.Tag,
-		"image_urls": imageURLs,
-		"likes":      dto.Likes,
-		"comments":   dto.Comments,
+		"id":            dto.ID,
+		"created_at":    dto.CreatedAt,
+		"updated_at":    dto.UpdatedAt,
+		"user_id":       dto.UserID,
+		"username":      dto.Username,
+		"avatar":        dto.Avatar,
+		"title":         dto.Title,
+		"body":          dto.Body,
+		"tag":           dto.Tag,
+		"image_urls":    imageURLs,
+		"likes":         dto.Likes,
+		"comments":      dto.Comments,
+		"comments_list": fullComments,
 	})
 }
 
@@ -230,9 +350,21 @@ func UpdatePostV2(c *gin.Context) {
 		return
 	}
 
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
 	var post models.Post
 	if err := database.DB.Where("post_id = ? AND is_deleted = ?", id, false).First(&post).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
+		return
+	}
+
+	// 权限校验：只有帖子作者才能修改
+	if post.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权修改他人帖子"})
 		return
 	}
 
@@ -273,18 +405,31 @@ func DeletePostV2(c *gin.Context) {
 		return
 	}
 
-	result := database.DB.Model(&models.Post{}).Where("post_id = ?", id).Update("is_deleted", true)
-	if result.RowsAffected == 0 {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
+	var post models.Post
+	if err := database.DB.Where("post_id = ? AND is_deleted = ?", id, false).First(&post).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
 		return
 	}
 
+	// 权限校验：只有帖子作者才能删除
+	if post.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权删除他人帖子"})
+		return
+	}
+
+	database.DB.Model(&post).Update("is_deleted", true)
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
 }
 
 // ==================== Comments Handlers ====================
 
-// ListComments GET /api/comments - 评论列表（需要 post_id 查询参数）
+// ListComments GET /api/comments - 评论列表（支持分页）
 func ListComments(c *gin.Context) {
 	query := database.DB.Model(&models.Comment{}).Where("is_deleted = ?", false)
 
@@ -292,15 +437,7 @@ func ListComments(c *gin.Context) {
 		query = query.Where("post_id = ?", postID)
 	}
 
-	var comments []models.Comment
-	query.Order("comment_id ASC").Find(&comments)
-
-	dtos := make([]CommentDTO, 0, len(comments))
-	for _, cm := range comments {
-		dtos = append(dtos, commentToDTO(cm))
-	}
-
-	c.JSON(http.StatusOK, dtos)
+	utils.PaginateMap[models.Comment, CommentDTO](c, query, "comment_id ASC", commentToDTO)
 }
 
 // GetComment GET /api/comments/:id
@@ -366,12 +503,25 @@ func DeleteCommentV2(c *gin.Context) {
 		return
 	}
 
-	result := database.DB.Model(&models.Comment{}).Where("comment_id = ?", id).Update("is_deleted", true)
-	if result.RowsAffected == 0 {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
+	var comment models.Comment
+	if err := database.DB.Where("comment_id = ? AND is_deleted = ?", id, false).First(&comment).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "评论不存在"})
 		return
 	}
 
+	// 权限校验：只有评论作者才能删除
+	if comment.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权删除他人评论"})
+		return
+	}
+
+	database.DB.Model(&comment).Update("is_deleted", true)
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
 }
 

@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { ElMessage } from 'element-plus'
+import { nextTick } from 'vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,7 +34,7 @@ const router = createRouter({
       path: '/community/:id',
       name: 'PostDetail',
       component: () => import('@/views/PostDetailView.vue'),
-      meta: { title: '帖子详情' }
+      meta: { title: '帖子详情', activeMenu: '/community' }
     },
     {
       path: '/auth',
@@ -53,6 +55,12 @@ const router = createRouter({
       meta: { title: '管理后台', requiresAuth: true, requiresStaff: true, hideFooter: true }
     },
     {
+      path: '/dashboard',
+      name: 'Dashboard',
+      component: () => import('@/views/DashboardView.vue'),
+      meta: { title: '数据大屏', hideFooter: true, hideNavbar: true, fullscreen: true }
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'NotFound',
       component: () => import('@/views/NotFound.vue'),
@@ -70,6 +78,7 @@ router.beforeEach((to, _from, next) => {
 
   // 需要认证的页面
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
+    ElMessage.warning('请先登录后再访问')
     next({ name: 'Auth', query: { redirect: to.fullPath } })
     return
   }
@@ -87,6 +96,16 @@ router.beforeEach((to, _from, next) => {
   }
 
   next()
+})
+
+// 路由切换后自动滚动到顶部（el-scrollbar 接管了滚动，需要手动操作 DOM）
+router.afterEach(() => {
+  nextTick(() => {
+    const scrollbar = document.querySelector('.app-scrollbar .el-scrollbar__wrap') as HTMLElement | null
+    if (scrollbar) {
+      scrollbar.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  })
 })
 
 export default router

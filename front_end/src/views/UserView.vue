@@ -5,7 +5,7 @@
       <div class="profile-main">
         <div class="avatar-box" @click="handleAvatarClick">
           <img v-if="authStore.user?.avatar" :src="authStore.user.avatar" class="avatar-img" />
-          <span v-else class="avatar-letter">{{ avatarLetter }}</span>
+          <span v-else class="avatar-letter" :style="{ background: avatarBg }">{{ avatarLetter }}</span>
           <div class="avatar-overlay">
             <span>更换</span>
           </div>
@@ -67,6 +67,10 @@
           <FishingRecordTab />
         </el-tab-pane>
 
+        <el-tab-pane label="垂钓统计" name="stats">
+          <FishingStatsPanel />
+        </el-tab-pane>
+
         <el-tab-pane name="myposts">
           <template #label>
             <span class="tab-label">
@@ -88,11 +92,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useFishingStore } from '@/stores/fishing'
 import { useCommunityStore, useFishingRecordStore } from '@/stores/community'
 import { CommunityService } from '@/services/CommunityService'
+import { getAvatarBackground, getAvatarLetter } from '@/composables/useAvatar'
 
 import ProfileForm from './user/ProfileForm.vue'
 import PasswordForm from './user/PasswordForm.vue'
 import FavoriteList from './user/FavoriteList.vue'
 import FishingRecordTab from './user/FishingRecordTab.vue'
+import FishingStatsPanel from './user/FishingStatsPanel.vue'
 import MyPostsTab from './user/MyPostsTab.vue'
 
 const authStore = useAuthStore()
@@ -102,11 +108,9 @@ const recordStore = useFishingRecordStore()
 const activeTab = ref('info')
 const avatarInputRef = ref<HTMLInputElement | null>(null)
 
-const avatarLetter = computed(() => {
-  const name = authStore.user?.username
-  if (!name) return '?'
-  return name.charAt(0).toUpperCase()
-})
+const avatarLetter = computed(() => getAvatarLetter(authStore.user?.username || ''))
+
+const avatarBg = computed(() => getAvatarBackground(authStore.user?.username || ''))
 
 const roleText = computed(() => {
   const map: Record<string, string> = { admin: '管理员', staff: '工作人员', user: '普通用户' }
@@ -123,8 +127,8 @@ onMounted(() => {
   fishingStore.fetchFavorites()
   if (authStore.user?.id) {
     communityStore.fetchMyPosts(authStore.user.id)
+    recordStore.fetchRecords(authStore.user.id)
   }
-  recordStore.fetchRecords()
 })
 
 function handleAvatarClick() {
@@ -135,6 +139,23 @@ async function handleAvatarUpload(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
+
+  // 文件格式校验
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  if (!allowedTypes.includes(file.type)) {
+    ElMessage.error('仅支持 JPG、PNG、GIF、WebP 格式的图片')
+    target.value = ''
+    return
+  }
+
+  // 文件大小校验（5MB）
+  const maxSize = 5 * 1024 * 1024
+  if (file.size > maxSize) {
+    ElMessage.error('图片大小不能超过 5MB')
+    target.value = ''
+    return
+  }
+
   try {
     await CommunityService.uploadAvatarImage(file)
     // 重新获取用户信息以刷新头像
@@ -215,8 +236,14 @@ async function handleAvatarUpload(e: Event) {
 .avatar-letter {
   font-size: 22px;
   font-weight: 700;
-  color: #3b7dd8;
+  color: #fff;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
 }
 
 .profile-info {

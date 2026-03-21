@@ -42,7 +42,7 @@
 import { computed } from 'vue'
 import BaseChart from '@/components/chart/BaseChart.vue'
 import type { HistoricalData, PopularSpot } from '@/types'
-import type { EChartsOption } from 'echarts'
+import type { EChartsOption } from '@/plugins/echarts'
 import { Histogram } from '@element-plus/icons-vue'
 
 const props = defineProps<{

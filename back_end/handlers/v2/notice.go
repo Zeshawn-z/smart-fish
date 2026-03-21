@@ -6,14 +6,14 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 // ListNotices 获取通知列表
 func ListNotices(c *gin.Context) {
-	var notices []models.Notice
-	query := database.DB
+	query := database.DB.Model(&models.Notice{})
 
 	if outdated := c.Query("outdated"); outdated != "" {
 		query = query.Where("outdated = ?", outdated == "true")
@@ -23,26 +23,7 @@ func ListNotices(c *gin.Context) {
 			"%"+search+"%", "%"+search+"%")
 	}
 
-	// 分页
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	var total int64
-	query.Model(&models.Notice{}).Count(&total)
-	query.Offset((page - 1) * pageSize).Limit(pageSize).Order("timestamp DESC").Find(&notices)
-
-	c.JSON(http.StatusOK, gin.H{
-		"results":   notices,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	utils.Paginate[models.Notice](c, query, "timestamp DESC")
 }
 
 // GetNotice 获取单个通知

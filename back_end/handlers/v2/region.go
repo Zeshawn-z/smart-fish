@@ -6,14 +6,14 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ListRegions 获取所有区域/按省份查询
+// ListRegions 获取所有区域/按省份查询（支持分页）
 func ListRegions(c *gin.Context) {
-	var regions []models.Region
-	query := database.DB
+	query := database.DB.Model(&models.Region{})
 
 	if province := c.Query("province"); province != "" {
 		query = query.Where("province = ?", province)
@@ -26,8 +26,7 @@ func ListRegions(c *gin.Context) {
 			"%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
-	query.Order("province, city").Find(&regions)
-	c.JSON(http.StatusOK, regions)
+	utils.Paginate[models.Region](c, query, "province, city")
 }
 
 // GetRegion 获取单个区域（含水域列表）

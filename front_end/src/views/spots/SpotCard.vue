@@ -14,8 +14,16 @@
       <span><el-icon><Ship /></el-icon> {{ WATER_TYPE_MAP[spot.water_type] }}</span>
     </div>
 
-    <!-- 描述 -->
-    <p class="spot-desc">{{ spot.description || '暂无描述' }}</p>
+    <!-- 描述（固定两行高度，hover 显示完整内容） -->
+    <el-tooltip
+      :content="spot.description || '暂无描述'"
+      placement="top"
+      :disabled="!spot.description || spot.description.length <= 30"
+      :show-after="300"
+      popper-class="spot-desc-tooltip"
+    >
+      <p class="spot-desc">{{ spot.description || '暂无描述' }}</p>
+    </el-tooltip>
 
     <!-- 环境数据仪表区 — 始终保持统一四宫格布局 -->
     <div class="env-panel" :class="{ 'env-panel--disabled': !deviceOnline }">
@@ -273,13 +281,15 @@ const loadColor = computed(() => {
   gap: 3px;
 }
 
-/* 描述 */
+/* 描述 — 固定两行高度 */
 .spot-desc {
   font-size: 13px;
   color: #606266;
   line-height: 1.5;
+  height: calc(13px * 1.5 * 2);  /* 固定两行高度 */
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin: 0 0 12px;
@@ -442,7 +452,6 @@ const loadColor = computed(() => {
   gap: 8px;
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
 }
 
 /* ===== 响应式 ===== */
@@ -466,5 +475,13 @@ const loadColor = computed(() => {
   .env-value { font-size: 14px; }
 
   .env-overlay-device { max-width: 80px; }
+}
+</style>
+
+<!-- tooltip popper 挂在 body 上，需非 scoped 样式 -->
+<style>
+.spot-desc-tooltip {
+  max-width: 320px !important;
+  line-height: 1.6 !important;
 }
 </style>

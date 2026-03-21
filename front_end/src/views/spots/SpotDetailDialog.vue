@@ -54,7 +54,7 @@ import { computed } from 'vue'
 import BaseChart from '@/components/chart/BaseChart.vue'
 import type { FishingSpot, EnvironmentData } from '@/types'
 import { WATER_TYPE_MAP, SPOT_STATUS_MAP } from '@/types'
-import type { EChartsOption } from 'echarts'
+import type { EChartsOption } from '@/plugins/echarts'
 import { Monitor, TrendCharts } from '@element-plus/icons-vue'
 
 const props = defineProps<{

@@ -1,7 +1,10 @@
 package v1
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
 	"fmt"
+	"hash"
 	"strings"
 	"time"
 
@@ -9,6 +12,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/crypto/scrypt"
 )
 
 // generateFlaskCompatToken 生成兼容 Flask flask-jwt-extended 的 JWT
@@ -64,7 +69,7 @@ func checkPassword(hashed, password string) bool {
 }
 
 // checkWerkzeugPassword 验证 werkzeug 格式的密码哈希
-// werkzeug 格式: "pbkdf2:sha256:600000$salt$hash"
+// werkzeug 格式: "pbkdf2:sha256:600000$salt$hash" 或 "scrypt:32768:8:1$salt$hash"
 func checkWerkzeugPassword(hashed, password string) bool {
 	parts := strings.SplitN(hashed, "$", 3)
 	if len(parts) != 3 {
@@ -81,53 +86,69 @@ func checkWerkzeugPassword(hashed, password string) bool {
 		return false
 	}
 
-	hashFunc := methodParts[1] // sha256, sha512, etc.
-	iterations := 600000       // 默认迭代次数
-	if len(methodParts) >= 3 {
-		fmt.Sscanf(methodParts[2], "%d", &iterations)
-	}
-
-	// 使用 PBKDF2 验证
-	if methodParts[0] == "pbkdf2" {
+	switch methodParts[0] {
+	case "pbkdf2":
+		hashFunc := methodParts[1] // sha256, sha512, etc.
+		iterations := 600000       // 默认迭代次数
+		if len(methodParts) >= 3 {
+			fmt.Sscanf(methodParts[2], "%d", &iterations)
+		}
 		actualHash := pbkdf2Hash(password, salt, iterations, hashFunc)
+		return actualHash == expectedHash
+
+	case "scrypt":
+		// scrypt:N:r:p$salt$hash
+		// Werkzeug 3.x 默认: scrypt:32768:8:1
+		n := 32768
+		r := 8
+		p := 1
+		if len(methodParts) >= 2 {
+			fmt.Sscanf(methodParts[1], "%d", &n)
+		}
+		if len(methodParts) >= 3 {
+			fmt.Sscanf(methodParts[2], "%d", &r)
+		}
+		if len(methodParts) >= 4 {
+			fmt.Sscanf(methodParts[3], "%d", &p)
+		}
+		actualHash := scryptHash(password, salt, n, r, p)
 		return actualHash == expectedHash
 	}
 
 	return false
 }
 
-// pbkdf2Hash 使用 PBKDF2 算法生成哈希
+// pbkdf2Hash 使用 PBKDF2 算法生成哈希（兼容 werkzeug 格式）
+// werkzeug 的哈希输出为小写十六进制字符串
 func pbkdf2Hash(password, salt string, iterations int, hashFunc string) string {
-	// 使用 Go 的 crypto 库实现 PBKDF2
 	var keyLen int
+	var h func() hash.Hash
+
 	switch hashFunc {
 	case "sha256":
 		keyLen = 32
+		h = sha256.New
 	case "sha512":
 		keyLen = 64
+		h = sha512.New
 	default:
 		keyLen = 32
+		h = sha256.New
 	}
 
-	dk := pbkdf2Key([]byte(password), []byte(salt), iterations, keyLen, hashFunc)
+	dk := pbkdf2.Key([]byte(password), []byte(salt), iterations, keyLen, h)
 	return fmt.Sprintf("%x", dk)
 }
 
-// pbkdf2Key 简易 PBKDF2 实现
-func pbkdf2Key(password, salt []byte, iterations, keyLen int, hashFunc string) []byte {
-	// 使用标准库的 pbkdf2
-	// 需要 import "crypto/sha256" 等，但为避免复杂依赖，
-	// 这里使用 golang.org/x/crypto/pbkdf2
-
-	// 实际上 golang.org/x/crypto 已经在项目依赖中（bcrypt 依赖它）
-	// 但 pbkdf2 是独立包，需要额外 import
-	// 暂时返回空，让 bcrypt 路径优先
-	_ = password
-	_ = salt
-	_ = iterations
-	_ = keyLen
-	_ = hashFunc
-	return nil
+// scryptHash 使用 scrypt 算法生成哈希（兼容 werkzeug 3.x 格式）
+// werkzeug scrypt 格式: "scrypt:N:r:p$salt$hex_hash"
+// 默认参数: N=32768, r=8, p=1, keyLen=64
+func scryptHash(password, salt string, n, r, p int) string {
+	dk, err := scrypt.Key([]byte(password), []byte(salt), n, r, p, 64)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", dk)
 }
 
 // parseFlexibleTime 解析多种时间格式（兼容 Flask datetime 传参）

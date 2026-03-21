@@ -30,6 +30,9 @@
         <el-menu-item index="/community">
           <el-icon><ChatDotRound /></el-icon> 钓友社区
         </el-menu-item>
+        <el-menu-item index="/dashboard">
+          <el-icon><DataLine /></el-icon> 数据大屏
+        </el-menu-item>
         <el-menu-item index="/profile" v-if="authStore.isLoggedIn">
           <el-icon><User /></el-icon> 个人中心
         </el-menu-item>
@@ -40,10 +43,15 @@
 
       <!-- 桌面端右侧 -->
       <div v-if="!isMobile" class="navbar-right">
+        <!-- 心知天气小组件 -->
+        <div id="tp-weather-widget"></div>
+
         <template v-if="authStore.isLoggedIn">
           <el-dropdown trigger="click">
             <span class="user-info">
-              <el-avatar :size="32" :icon="UserFilled" class="user-avatar" />
+              <el-avatar :size="32" :src="myAvatar.src" :style="myAvatar.hasAvatar ? {} : myAvatar.style" class="user-avatar">
+                {{ myAvatar.hasAvatar ? '' : myAvatar.letter }}
+              </el-avatar>
               <span class="username">{{ authStore.username }}</span>
               <el-icon class="dropdown-arrow"><ArrowDown /></el-icon>
             </span>
@@ -103,6 +111,9 @@
         <div class="drawer-item" :class="{ active: activeMenu === '/community' }" @click="navigateMobile('/community')">
           <el-icon><ChatDotRound /></el-icon> <span>钓友社区</span>
         </div>
+        <div class="drawer-item" :class="{ active: activeMenu === '/dashboard' }" @click="navigateMobile('/dashboard')">
+          <el-icon><DataLine /></el-icon> <span>数据大屏</span>
+        </div>
         <div v-if="authStore.isLoggedIn" class="drawer-item" :class="{ active: activeMenu === '/profile' }" @click="navigateMobile('/profile')">
           <el-icon><User /></el-icon> <span>个人中心</span>
         </div>
@@ -114,7 +125,9 @@
       <div class="drawer-footer">
         <template v-if="authStore.isLoggedIn">
           <div class="drawer-user">
-            <el-avatar :size="36" :icon="UserFilled" />
+            <el-avatar :size="36" :src="myAvatar.src" :style="myAvatar.hasAvatar ? {} : myAvatar.style">
+              {{ myAvatar.hasAvatar ? '' : myAvatar.letter }}
+            </el-avatar>
             <div class="drawer-user-info">
               <span class="drawer-username">{{ authStore.username }}</span>
               <span class="drawer-role">{{ authStore.isAdmin ? '管理员' : authStore.isStaff ? '工作人员' : '用户' }}</span>
@@ -137,16 +150,20 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAvatar } from '@/composables/useAvatar'
 import {
-  Ship, UserFilled, User, SwitchButton, HomeFilled, MapLocation,
-  Bell, Setting, ArrowDown, Menu, ChatDotRound
+  Ship, User, SwitchButton, HomeFilled, MapLocation,
+  Bell, Setting, ArrowDown, Menu, ChatDotRound, DataLine
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const activeMenu = computed(() => route.path)
+/** 当前用户头像信息（响应式） */
+const myAvatar = computed(() => useAvatar(authStore.user?.avatar, authStore.user?.username))
+
+const activeMenu = computed(() => (route.meta.activeMenu as string) || route.path)
 const isMobile = ref(false)
 const isScrolled = ref(false)
 const drawerVisible = ref(false)
@@ -174,6 +191,33 @@ onMounted(() => {
   checkScreen()
   window.addEventListener('resize', checkScreen)
   document.addEventListener('app-scroll', onAppScroll)
+
+  // 桌面端加载心知天气小组件
+  if (!isMobile.value) {
+    const w = window as any
+    w['SeniverseWeatherWidgetObject'] = 'SeniverseWeatherWidget'
+    w['SeniverseWeatherWidget'] = w['SeniverseWeatherWidget'] || function (...args: any[]) {
+      (w['SeniverseWeatherWidget'].q = w['SeniverseWeatherWidget'].q || []).push(args)
+    }
+    w['SeniverseWeatherWidget'].l = +new Date()
+    // 直接注入脚本（SPA 中 load 事件早已触发，不能用 addEventListener('load')）
+    const script = document.createElement('script')
+    script.src = '//cdn.sencdn.com/widget2/static/js/bundle.js?t=' + parseInt((new Date().getTime() / 100000000).toString(), 10)
+    script.charset = 'utf-8'
+    script.async = true
+    document.head.appendChild(script)
+    w['SeniverseWeatherWidget']('show', {
+      flavor: 'slim',
+      location: 'YB1UX38K6DY1',
+      geolocation: true,
+      language: 'zh-Hans',
+      unit: 'c',
+      theme: 'auto',
+      token: '8237a328-a343-42d7-9de5-075fb91ab4b0',
+      hover: 'enabled',
+      container: 'tp-weather-widget'
+    })
+  }
 })
 
 onBeforeUnmount(() => {
@@ -279,6 +323,17 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
+#tp-weather-widget {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+}
+
+/* 心知天气 SDK 动态注入的元素需要穿透 scoped */
+#tp-weather-widget :deep(*) {
+  font-size: 13px;
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -294,7 +349,7 @@ onBeforeUnmount(() => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #409eff, #007bff);
+  flex-shrink: 0;
 }
 
 .username {

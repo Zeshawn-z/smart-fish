@@ -4,8 +4,8 @@
       <!-- 用户 + 标签 + 时间 -->
       <div class="post-meta">
         <div class="meta-left">
-          <el-avatar :size="28" :src="post.avatar || undefined" class="meta-avatar">
-            {{ post.avatar ? '' : (post.username || '用户')[0] }}
+          <el-avatar :size="28" :src="avatar.src" :style="avatar.hasAvatar ? {} : avatar.style" class="meta-avatar">
+            {{ avatar.hasAvatar ? '' : avatar.letter }}
           </el-avatar>
           <span class="meta-author">{{ post.username || `用户 #${post.user_id}` }}</span>
           <span class="meta-sep">·</span>
@@ -45,9 +45,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Post } from '@/types'
+import { useAvatar } from '@/composables/useAvatar'
 
 const props = defineProps<{ post: Post }>()
 defineEmits<{ (e: 'click'): void }>()
+
+const avatar = computed(() => useAvatar(props.post.avatar, props.post.username))
 
 const firstImage = computed(() => {
   if (!props.post.image_url) return null
@@ -116,7 +119,6 @@ function formatTime(dateStr?: string) {
 }
 
 .meta-avatar {
-  background: linear-gradient(135deg, #667eea, #764ba2);
   color: #fff;
   font-size: 12px;
   font-weight: 600;

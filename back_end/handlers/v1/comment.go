@@ -81,7 +81,14 @@ func CreateComment(c *gin.Context) {
 
 // GetCommentOnComments GET /api/v1/comment/:comment_id - 获取评论的子评论列表
 func GetCommentOnComments(c *gin.Context) {
-	commentID := c.Param("comment_id")
+	commentIDStr := c.Param("comment_id")
+
+	// 解析 comment_id 为 uint，与 Flask 返回的 int 类型一致
+	commentID, err := parseUintParam(commentIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"msg": "Invalid comment_id"})
+		return
+	}
 
 	var cocs []models.CommentOnComments
 	database.DB.Where("comment_id = ? AND is_deleted = ?", commentID, false).Find(&cocs)
@@ -124,7 +131,7 @@ func GetCommentOnComments(c *gin.Context) {
 		result = append(result, item)
 	}
 
-	// 注意：Flask 原始返回 comment_id 是 int 类型，这里需要转为 uint
+	// Flask 返回 comment_id 为 int 类型
 	c.JSON(http.StatusOK, gin.H{
 		"comment_id": commentID,
 		"comments":   result,

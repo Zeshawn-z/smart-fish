@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"smart-fish/back_end/database"
@@ -13,6 +14,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// allowedImageTypes 允许上传的图片 MIME 类型
+var allowedImageTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+}
+
+// maxImageSize 最大图片文件大小（10MB）
+const maxImageSize = 10 << 20
 
 // UploadFishingData 上传垂钓数据（设备上报）
 func UploadFishingData(c *gin.Context) {
@@ -181,6 +193,22 @@ func UploadImage(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil || file == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "未找到上传文件，请使用 file 字段"})
+		return
+	}
+
+	// 文件大小校验（10MB）
+	if file.Size > maxImageSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件大小不能超过 10MB"})
+		return
+	}
+
+	// MIME 类型校验
+	contentType := file.Header.Get("Content-Type")
+	// 取分号前的主类型（如 "image/jpeg; charset=utf-8" → "image/jpeg"）
+	mimeType := strings.Split(contentType, ";")[0]
+	mimeType = strings.TrimSpace(mimeType)
+	if !allowedImageTypes[mimeType] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文件类型，仅允许 JPG/PNG/GIF/WebP"})
 		return
 	}
 

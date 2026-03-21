@@ -6,14 +6,14 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 // ListFishingSpots 获取垂钓水域列表
 func ListFishingSpots(c *gin.Context) {
-	var spots []models.FishingSpot
-	query := database.DB.Preload("Region").Preload("BoundDevice")
+	query := database.DB.Preload("Region").Preload("BoundDevice").Model(&models.FishingSpot{})
 
 	if regionID := c.Query("region_id"); regionID != "" {
 		query = query.Where("region_id = ?", regionID)
@@ -29,26 +29,7 @@ func ListFishingSpots(c *gin.Context) {
 			"%"+search+"%", "%"+search+"%")
 	}
 
-	// 分页
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	var total int64
-	query.Model(&models.FishingSpot{}).Count(&total)
-	query.Offset((page - 1) * pageSize).Limit(pageSize).Order("id DESC").Find(&spots)
-
-	c.JSON(http.StatusOK, gin.H{
-		"results":   spots,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	utils.Paginate[models.FishingSpot](c, query, "id DESC")
 }
 
 // GetFishingSpot 获取单个水域详情

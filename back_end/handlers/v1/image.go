@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/middleware"
@@ -13,6 +14,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// allowedImageTypes 允许上传的图片 MIME 类型
+var allowedImageTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+}
+
+// maxImageSize 最大图片文件大小（10MB）
+const maxImageSize = 10 << 20
 
 // UploadPostImage POST /api/v1/image/post - 上传帖子图片
 func UploadPostImage(c *gin.Context) {
@@ -85,6 +97,21 @@ func handleImageUpload(c *gin.Context, entityType string, entityID uint) {
 	file, err := c.FormFile("picbed")
 	if err != nil || file == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Error, No File"})
+		return
+	}
+
+	// 文件大小校验（10MB）
+	if file.Size > maxImageSize {
+		c.JSON(http.StatusBadRequest, gin.H{"msg": "File too large, max 10MB"})
+		return
+	}
+
+	// MIME 类型校验
+	contentType := file.Header.Get("Content-Type")
+	mimeType := strings.Split(contentType, ";")[0]
+	mimeType = strings.TrimSpace(mimeType)
+	if !allowedImageTypes[mimeType] {
+		c.JSON(http.StatusBadRequest, gin.H{"msg": "Unsupported file type, only JPG/PNG/GIF/WebP allowed"})
 		return
 	}
 

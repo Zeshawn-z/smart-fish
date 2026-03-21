@@ -5,34 +5,47 @@
  */
 
 import { createResourceService } from './createResourceService'
-import { httpPost } from '@/network/http'
+import { httpGet, httpPost } from '@/network/http'
 import type { FishingRecord, FishCaught } from '@/types'
 
 /** 垂钓记录服务（工厂模式） */
 export const FishingRecordResourceService = createResourceService({
   name: 'fishing-records',
   model: {} as FishingRecord,
-  listParams: {} as { user_id?: number }
+  paginated: true,
+  listParams: {} as { user_id?: number; page?: number; page_size?: number }
 })
 
 /** 渔获服务（工厂模式） */
 export const FishCaughtResourceService = createResourceService({
   name: 'fish-caught',
   model: {} as FishCaught,
-  listParams: {} as { record_id?: number }
+  paginated: true,
+  listParams: {} as { record_id?: number; page?: number; page_size?: number }
 })
 
 /**
  * 垂钓记录服务 —— 聚合接口
  */
 export const FishingRecordService = {
-  async getMyRecords() {
+  async getMyRecords(userId: number) {
     try {
-      const res = await FishingRecordResourceService.list()
+      const res = await FishingRecordResourceService.list({ user_id: userId } as any)
       return { records: res.data }
     } catch {
       return { records: [] as FishingRecord[] }
     }
+  },
+
+  async getMyStats(): Promise<{
+    total_trips: number
+    total_fish: number
+    total_kg: number
+    max_kg: number
+    total_hours: number
+    fish_types: { fish_type: string; count: number }[]
+  }> {
+    return httpGet('/api/v2/fishing-records/stats')
   },
 
   async getRecord(recordId: number): Promise<FishingRecord> {

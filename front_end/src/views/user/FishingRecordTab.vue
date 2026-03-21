@@ -46,7 +46,7 @@
       </div>
     </div>
 
-    <CreateRecordDialog v-model="showCreateDialog" @created="recordStore.fetchRecords()" />
+    <CreateRecordDialog v-model="showCreateDialog" @created="refreshRecords" />
   </div>
 </template>
 
@@ -54,10 +54,12 @@
 import { ref, onMounted } from 'vue'
 import { Plus, Location, Monitor } from '@element-plus/icons-vue'
 import { useFishingRecordStore } from '@/stores/community'
+import { useAuthStore } from '@/stores/auth'
 
 import SensorDataCard from './SensorDataCard.vue'
 import CreateRecordDialog from './CreateRecordDialog.vue'
 
+const authStore = useAuthStore()
 const recordStore = useFishingRecordStore()
 const showCreateDialog = ref(false)
 
@@ -66,7 +68,13 @@ function formatTime(t: string) {
   return t.replace('T', ' ').slice(0, 16)
 }
 
-onMounted(() => recordStore.fetchRecords())
+function refreshRecords() {
+  if (authStore.user?.id) {
+    recordStore.fetchRecords(authStore.user.id)
+  }
+}
+
+onMounted(() => refreshRecords())
 </script>
 
 <style scoped>

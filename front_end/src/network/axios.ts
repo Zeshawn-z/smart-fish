@@ -3,6 +3,22 @@ import router from '@/router'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
+/**
+ * Token 同步回调 —— 由 auth store 在初始化时注册
+ * 解决 axios 拦截器刷新 token 后无法同步 Pinia store 的问题
+ * （直接 import store 会导致循环依赖）
+ */
+let _onTokenRefreshed: ((token: string) => void) | null = null
+let _onAuthFailed: (() => void) | null = null
+
+export function registerAuthCallbacks(
+  onRefreshed: (token: string) => void,
+  onFailed: () => void
+) {
+  _onTokenRefreshed = onRefreshed
+  _onAuthFailed = onFailed
+}
+
 // 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
@@ -66,9 +82,10 @@ apiClient.interceptors.response.use(
       if (!refreshToken) {
         processQueue(new Error('No refresh token'), null)
         isRefreshing = false
-        // 清除登录状态
+        // 清除登录状态并通知 store
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
+        _onAuthFailed?.()
         router.push('/auth')
         return Promise.reject(error)
       }
@@ -79,6 +96,8 @@ apiClient.interceptors.response.use(
         })
         const newToken = data.access_token
         localStorage.setItem('access_token', newToken)
+        // 同步更新 Pinia store 中的 accessToken
+        _onTokenRefreshed?.(newToken)
         processQueue(null, newToken)
         originalRequest.headers.Authorization = `Bearer ${newToken}`
         return apiClient(originalRequest)
@@ -86,6 +105,7 @@ apiClient.interceptors.response.use(
         processQueue(refreshError, null)
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
+        _onAuthFailed?.()
         router.push('/auth')
         return Promise.reject(refreshError)
       } finally {

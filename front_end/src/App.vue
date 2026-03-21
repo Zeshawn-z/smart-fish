@@ -1,19 +1,24 @@
 <template>
-  <el-scrollbar class="app-scrollbar" @scroll="onScroll">
-    <div id="app-wrapper">
-      <Navbar />
-      <main class="main-content" :class="{ 'admin-page': route.meta.hideFooter }">
-        <router-view />
-      </main>
-      <Footer v-if="!route.meta.hideFooter" />
-    </div>
-  </el-scrollbar>
+  <el-config-provider :locale="elLocale" size="default">
+    <el-scrollbar v-if="!route.meta.fullscreen" class="app-scrollbar" @scroll="onScroll">
+      <div id="app-wrapper">
+        <Navbar v-if="!route.meta.hideNavbar" />
+        <main class="main-content" :class="{ 'admin-page': route.meta.hideFooter }">
+          <router-view />
+        </main>
+        <Footer v-if="!route.meta.hideFooter" />
+      </div>
+    </el-scrollbar>
+    <!-- 全屏模式：数据大屏等场景 -->
+    <router-view v-else />
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import Navbar from '@/components/layout/Navbar.vue'
 import Footer from '@/components/layout/Footer.vue'
+import { elLocale } from '@/plugins/element-plus'
 
 const route = useRoute()
 

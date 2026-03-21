@@ -6,53 +6,24 @@ import (
 
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 // ListSuggestions 获取垂钓建议列表
 func ListSuggestions(c *gin.Context) {
-	var suggestions []models.FishingSuggestion
-	query := database.DB.Preload("FishingSpot").Preload("FishingSpot.Region").Order("timestamp DESC")
+	query := database.DB.Model(&models.FishingSuggestion{}).
+		Preload("FishingSpot").Preload("FishingSpot.Region")
 
-	// 按水域筛选
 	if spotID := c.Query("spot_id"); spotID != "" {
 		query = query.Where("spot_id = ?", spotID)
 	}
-
-	// 按用户筛选
 	if userID := c.Query("user_id"); userID != "" {
 		query = query.Where("user_id = ?", userID)
 	}
 
-	// 分页
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 10
-	}
-
-	var total int64
-	countQuery := database.DB.Model(&models.FishingSuggestion{})
-	if spotID := c.Query("spot_id"); spotID != "" {
-		countQuery = countQuery.Where("spot_id = ?", spotID)
-	}
-	if userID := c.Query("user_id"); userID != "" {
-		countQuery = countQuery.Where("user_id = ?", userID)
-	}
-	countQuery.Count(&total)
-
-	query.Offset((page - 1) * pageSize).Limit(pageSize).Find(&suggestions)
-
-	c.JSON(http.StatusOK, gin.H{
-		"results":   suggestions,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	utils.Paginate[models.FishingSuggestion](c, query, "timestamp DESC", 10)
 }
 
 // GetSuggestion 获取单条垂钓建议

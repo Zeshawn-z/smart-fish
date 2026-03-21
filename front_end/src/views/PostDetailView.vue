@@ -9,14 +9,19 @@
       <div class="post-main">
         <!-- 作者信息 -->
         <div class="author-bar">
-          <el-avatar :size="40" :src="(post as any).avatar || undefined" class="author-avatar">
-            {{ (post as any).avatar ? '' : (post.username || '用户')[0] }}
+          <el-avatar :size="40" :src="authorAvatar.src" :style="authorAvatar.hasAvatar ? {} : authorAvatar.style" class="author-avatar">
+            {{ authorAvatar.hasAvatar ? '' : authorAvatar.letter }}
           </el-avatar>
           <div class="author-info">
             <span class="author-name">{{ post.username || `用户 #${post.user_id}` }}</span>
             <span class="author-time">{{ formatTime(post.created_at) }}</span>
           </div>
           <el-tag v-if="post.tag" size="small" effect="plain" round>{{ post.tag }}</el-tag>
+          <!-- 作者操作按钮 -->
+          <div v-if="isAuthor" class="author-actions">
+            <el-button text type="primary" :icon="Edit" size="small" @click="showEditDialog = true">编辑</el-button>
+            <el-button text type="danger" :icon="Delete" size="small" @click="handleDelete">删除</el-button>
+          </div>
         </div>
 
         <!-- 标题 -->
@@ -60,6 +65,9 @@
 
       <!-- 评论区 -->
       <CommentSection :post-id="postId" :comments="comments" :is-logged-in="authStore.isLoggedIn" @refresh="refreshComments" />
+
+      <!-- 编辑帖子对话框 -->
+      <EditPostDialog v-model="showEditDialog" :post="post" @updated="loadPost" />
     </template>
 
     <div v-else-if="!isLoading" class="not-found">
@@ -69,15 +77,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ArrowLeft, Edit, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { CommunityService } from '@/services/CommunityService'
+import { CommunityService, PostService } from '@/services/CommunityService'
+import { useAvatar } from '@/composables/useAvatar'
 import type { Post, Comment as CommentType } from '@/types'
 
 import CommentSection from './community/CommentSection.vue'
+import EditPostDialog from './community/EditPostDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,6 +98,7 @@ const comments = ref<CommentType[]>([])
 const isLoading = ref(false)
 const likeCount = ref(0)
 const hasLiked = ref(false)
+const showEditDialog = ref(false)
 
 const postId = computed(() => Number(route.params.id))
 const contentLines = computed(() => post.value?.body?.split('\n') || [])
@@ -97,6 +108,11 @@ const imageUrls = computed(() => {
   if (!urls) return []
   return Array.isArray(urls) ? urls : [urls]
 })
+const isAuthor = computed(() => {
+  return authStore.isLoggedIn && post.value && authStore.user?.id === post.value.user_id
+})
+
+const authorAvatar = computed(() => useAvatar((post.value as any)?.avatar, post.value?.username))
 
 function formatTime(dateStr?: string) {
   if (!dateStr) return ''
@@ -108,15 +124,12 @@ function formatTime(dateStr?: string) {
 async function loadPost() {
   isLoading.value = true
   try {
-    // 先加载帖子本体，确保帖子能正常显示
+    // 帖子详情现在直接包含完整评论数据（含子评论 + 点赞数）
     const detail = await CommunityService.getPost(postId.value)
     post.value = detail as Post
 
-    // 评论和点赞独立加载，失败不影响帖子展示
-    try {
-      const commentsRes = await CommunityService.getComments(postId.value)
-      comments.value = commentsRes.comments_list || []
-    } catch { comments.value = [] }
+    // 评论从帖子响应中直接获取（后端已嵌入）
+    comments.value = (detail as any).comments_list || []
 
     try {
       const likesRes = await CommunityService.getPostLikes(postId.value)
@@ -131,8 +144,9 @@ async function loadPost() {
 }
 
 async function refreshComments() {
-  const res = await CommunityService.getComments(postId.value)
-  comments.value = res.comments_list || []
+  // 刷新时重新拉取帖子详情（评论已嵌入其中）
+  const detail = await CommunityService.getPost(postId.value)
+  comments.value = (detail as any).comments_list || []
 }
 
 async function toggleLike() {
@@ -150,7 +164,25 @@ async function toggleLike() {
   } catch { /* Already Liked / not found */ }
 }
 
-onMounted(() => loadPost())
+async function handleDelete() {
+  try {
+    await ElMessageBox.confirm('确定要删除这篇帖子吗？删除后无法恢复。', '删除帖子', {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await PostService.delete(postId.value)
+    ElMessage.success('帖子已删除')
+    router.push('/community')
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('删除失败，请稍后再试')
+    }
+  }
+}
+
+// 监听 postId 变化自动加载（含首次），支持帖子间直接导航
+watch(postId, () => loadPost(), { immediate: true })
 </script>
 
 <style scoped>
@@ -170,8 +202,13 @@ onMounted(() => loadPost())
   margin-bottom: 20px;
 }
 
+.author-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
 .author-avatar {
-  background: linear-gradient(135deg, #667eea, #764ba2);
   color: #fff;
   font-size: 16px;
   font-weight: 600;

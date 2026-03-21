@@ -9,10 +9,10 @@ import { httpGet } from '@/network/http'
 import type { IoTDeviceData } from '@/types'
 
 export const IoTDeviceService = {
-  /** 获取所有 IoT 设备列表 */
-  async list(): Promise<{ data: IoTDeviceData[]; total: number }> {
-    const data = await httpGet<IoTDeviceData[]>('/api/v2/iot-devices')
-    return { data, total: data.length }
+  /** 获取 IoT 设备列表（支持分页） */
+  async list(params?: Record<string, any>): Promise<{ data: IoTDeviceData[]; total: number }> {
+    const res = await httpGet<{ results: IoTDeviceData[]; total: number }>('/api/v2/iot-devices', params)
+    return { data: res.results, total: res.total }
   },
 
   /** 获取单个设备数据 */

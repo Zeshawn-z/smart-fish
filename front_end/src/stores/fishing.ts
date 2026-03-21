@@ -37,7 +37,7 @@ export const useFishingStore = defineStore('fishing', () => {
   async function fetchRegions(params?: { province?: string; search?: string }) {
     isLoading.value = true
     try {
-      const res = await RegionService.list(params)
+      const res = await RegionService.list({ page_size: 100, ...params })
       regions.value = res.data
     } finally {
       isLoading.value = false
