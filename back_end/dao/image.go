@@ -53,6 +53,50 @@ func GetImageByFishID(fishID uint) *string {
 	return nil
 }
 
+// GetImagesByFishIDs 批量查询渔获图片（返回 map[fishID]imageURL）
+func GetImagesByFishIDs(fishIDs []uint) map[uint]string {
+	result := make(map[uint]string)
+	if len(fishIDs) == 0 {
+		return result
+	}
+	var images []models.Image
+	database.DB.Where("fish_id IN ? AND is_deleted = ?", fishIDs, false).Find(&images)
+	for _, img := range images {
+		if img.FishID != nil {
+			result[*img.FishID] = img.ImageURL
+		}
+	}
+	return result
+}
+
+// GetFirstImagesByPostIDs 批量查询帖子首张图片（返回 map[postID]imageURL）
+func GetFirstImagesByPostIDs(postIDs []uint) map[uint]string {
+	result := make(map[uint]string)
+	if len(postIDs) == 0 {
+		return result
+	}
+	// 使用子查询获取每个 post 的最小 image id，然后取出对应图片
+	type postImage struct {
+		PostID   uint
+		ImageURL string
+	}
+	var images []postImage
+	database.DB.Model(&models.Image{}).
+		Select("post_id, image_url").
+		Where("post_id IN ? AND is_deleted = ? AND id IN (?)",
+			postIDs, false,
+			database.DB.Model(&models.Image{}).
+				Select("MIN(id)").
+				Where("post_id IN ? AND is_deleted = ?", postIDs, false).
+				Group("post_id"),
+		).
+		Scan(&images)
+	for _, img := range images {
+		result[img.PostID] = img.ImageURL
+	}
+	return result
+}
+
 // SoftDeleteAvatars 软删除用户旧头像
 func SoftDeleteAvatars(userID uint) error {
 	return database.DB.Model(&models.Image{}).

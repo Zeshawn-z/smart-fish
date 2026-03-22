@@ -157,6 +157,34 @@ func UpdateIoTDeviceFields(device *models.IoTDevice, updates map[string]interfac
 	return database.DB.Model(device).Updates(updates).Error
 }
 
+// GetFishCaughtByRecordIDs 批量查询多条记录的渔获（返回 map[recordID][]FishCaught）
+func GetFishCaughtByRecordIDs(recordIDs []uint) map[uint][]models.FishCaught {
+	result := make(map[uint][]models.FishCaught)
+	if len(recordIDs) == 0 {
+		return result
+	}
+	var fishes []models.FishCaught
+	database.DB.Where("record_id IN ?", recordIDs).Find(&fishes)
+	for _, f := range fishes {
+		result[f.RecordID] = append(result[f.RecordID], f)
+	}
+	return result
+}
+
+// GetIoTDevicesByDeviceIDs 批量查询 IoT 设备（返回 map[deviceID]IoTDevice）
+func GetIoTDevicesByDeviceIDs(deviceIDs []string) map[string]models.IoTDevice {
+	result := make(map[string]models.IoTDevice)
+	if len(deviceIDs) == 0 {
+		return result
+	}
+	var devices []models.IoTDevice
+	database.DB.Where("device_id IN ?", deviceIDs).Find(&devices)
+	for _, d := range devices {
+		result[d.DeviceID] = d
+	}
+	return result
+}
+
 // GetFishingRecordsByUserID 获取用户垂钓记录（v1 兼容）
 func GetFishingRecordsByUserID(userID uint) []models.FishingRecord {
 	var records []models.FishingRecord

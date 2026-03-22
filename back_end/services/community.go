@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"smart-fish/back_end/cache"
@@ -61,7 +62,7 @@ type FullCommentDTO struct {
 
 // ==================== Post Service ====================
 
-// PostToDTO 将 Post 模型转换为 DTO
+// PostToDTO 将 Post 模型转换为 DTO（并发查询关联数据）
 func PostToDTO(post models.Post) PostDTO {
 	dto := PostDTO{
 		ID:        post.PostID,
@@ -73,20 +74,51 @@ func PostToDTO(post models.Post) PostDTO {
 		Tag:       post.Tag,
 	}
 
-	user, err := dao.GetUserByID(post.UserID)
-	if err == nil {
-		dto.Username = user.Username
-		dto.Avatar = dao.GetUserAvatar(user.ID)
-	}
+	// 5 个查询完全独立，并发执行
+	var (
+		user     *models.User
+		avatar   *string
+		imageURL *string
+		likes    int64
+		comments int64
+		wg       sync.WaitGroup
+	)
 
-	dto.ImageURL = dao.GetFirstImageByPostID(post.PostID)
-	dto.Likes = dao.GetPostLikeCount(post.PostID)
-	dto.Comments = dao.GetPostCommentCount(post.PostID)
+	wg.Add(5)
+	go func() {
+		defer wg.Done()
+		user, _ = dao.GetUserByID(post.UserID)
+	}()
+	go func() {
+		defer wg.Done()
+		avatar = dao.GetUserAvatar(post.UserID)
+	}()
+	go func() {
+		defer wg.Done()
+		imageURL = dao.GetFirstImageByPostID(post.PostID)
+	}()
+	go func() {
+		defer wg.Done()
+		likes = dao.GetPostLikeCount(post.PostID)
+	}()
+	go func() {
+		defer wg.Done()
+		comments = dao.GetPostCommentCount(post.PostID)
+	}()
+	wg.Wait()
+
+	if user != nil {
+		dto.Username = user.Username
+	}
+	dto.Avatar = avatar
+	dto.ImageURL = imageURL
+	dto.Likes = likes
+	dto.Comments = comments
 
 	return dto
 }
 
-// CommentToDTO 将 Comment 模型转换为 DTO
+// CommentToDTO 将 Comment 模型转换为 DTO（并发查询用户和头像）
 func CommentToDTO(comment models.Comment) CommentDTO {
 	dto := CommentDTO{
 		ID:        comment.CommentID,
@@ -97,16 +129,33 @@ func CommentToDTO(comment models.Comment) CommentDTO {
 		Body:      comment.Body,
 	}
 
-	user, err := dao.GetUserByID(comment.UserID)
-	if err == nil {
+	// 用户信息和头像互相独立，并发查询
+	var (
+		user   *models.User
+		avatar *string
+		wg     sync.WaitGroup
+	)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		user, _ = dao.GetUserByID(comment.UserID)
+	}()
+	go func() {
+		defer wg.Done()
+		avatar = dao.GetUserAvatar(comment.UserID)
+	}()
+	wg.Wait()
+
+	if user != nil {
 		dto.Username = user.Username
-		dto.Avatar = dao.GetUserAvatar(user.ID)
 	}
+	dto.Avatar = avatar
 
 	return dto
 }
 
-// GetPostDetail 获取帖子详情（含完整评论数据，带缓存）
+// GetPostDetail 获取帖子详情（含完整评论数据，带缓存 + 并发查询）
 func GetPostDetail(postID int) (map[string]interface{}, error) {
 	// 尝试从缓存获取
 	cacheKey := fmt.Sprintf(cache.KeyPostDetail, postID)
@@ -120,47 +169,81 @@ func GetPostDetail(postID int) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	dto := PostToDTO(*post)
+	// === 第一组并行：全部仅依赖 post，互相独立 ===
+	var (
+		user     *models.User
+		avatar   *string
+		imageURL *string
+		images   []models.Image
+		comments []models.Comment
+		likes    int64
+		commentCount int64
+		wg1      sync.WaitGroup
+	)
 
-	// 获取所有图片
-	images := dao.GetImagesByPostID(post.PostID)
+	wg1.Add(6)
+	go func() { defer wg1.Done(); user, _ = dao.GetUserByID(post.UserID) }()
+	go func() { defer wg1.Done(); imageURL = dao.GetFirstImageByPostID(post.PostID) }()
+	go func() { defer wg1.Done(); images = dao.GetImagesByPostID(post.PostID) }()
+	go func() { defer wg1.Done(); comments = dao.GetCommentsByPostID(post.PostID) }()
+	go func() { defer wg1.Done(); likes = dao.GetPostLikeCount(post.PostID) }()
+	go func() { defer wg1.Done(); commentCount = dao.GetPostCommentCount(post.PostID) }()
+	wg1.Wait()
+
+	// 用户头像（依赖 user 结果）
+	username := ""
+	if user != nil {
+		username = user.Username
+		avatar = dao.GetUserAvatar(user.ID)
+	}
+	_ = imageURL // PostToDTO 中用到，这里用 images 完整列表
+
+	// 整理图片 URL
 	imageURLs := make([]string, 0, len(images))
 	for _, img := range images {
 		imageURLs = append(imageURLs, img.ImageURL)
 	}
 
-	// 获取评论
-	comments := dao.GetCommentsByPostID(post.PostID)
-
-	// 批量收集用户 ID
-	userIDSet := map[uint]bool{}
+	// === 第二组并行：依赖 comments 结果 ===
+	commentIDs := make([]uint, 0, len(comments))
+	userIDSet := map[uint]bool{post.UserID: true}
 	for _, c := range comments {
+		commentIDs = append(commentIDs, c.CommentID)
 		userIDSet[c.UserID] = true
 	}
 
-	// 批量获取子评论
-	commentIDs := make([]uint, 0, len(comments))
-	for _, c := range comments {
-		commentIDs = append(commentIDs, c.CommentID)
-	}
+	var (
+		allCocs         []models.CommentOnComments
+		commentLikesMap map[uint]int64
+		wg2             sync.WaitGroup
+	)
 
-	allCocs := dao.GetSubCommentsByCommentIDs(commentIDs)
+	wg2.Add(2)
+	go func() { defer wg2.Done(); allCocs = dao.GetSubCommentsByCommentIDs(commentIDs) }()
+	go func() { defer wg2.Done(); commentLikesMap = dao.BatchGetCommentLikeCounts(commentIDs) }()
+	wg2.Wait()
+
+	// 收集子评论中的用户 ID
 	for _, coc := range allCocs {
 		userIDSet[coc.UserID] = true
 	}
 
-	// 批量查询用户
+	// === 第三组并行：依赖 userIDSet ===
 	userIDs := make([]uint, 0, len(userIDSet))
 	for uid := range userIDSet {
 		userIDs = append(userIDs, uid)
 	}
-	userMap := dao.GetUsersByIDs(userIDs)
 
-	// 批量查询评论点赞数
-	commentLikesMap := dao.BatchGetCommentLikeCounts(commentIDs)
+	var (
+		userMap   map[uint]models.User
+		avatarMap map[uint]string
+		wg3       sync.WaitGroup
+	)
 
-	// 批量查询头像
-	avatarMap := dao.GetUserAvatarsBatch(userIDs)
+	wg3.Add(2)
+	go func() { defer wg3.Done(); userMap = dao.GetUsersByIDs(userIDs) }()
+	go func() { defer wg3.Done(); avatarMap = dao.GetUserAvatarsBatch(userIDs) }()
+	wg3.Wait()
 
 	// 按 comment_id 分组子评论
 	cocsByComment := map[uint][]models.CommentOnComments{}
@@ -228,18 +311,18 @@ func GetPostDetail(postID int) (map[string]interface{}, error) {
 	}
 
 	result := map[string]interface{}{
-		"id":            dto.ID,
-		"created_at":    dto.CreatedAt,
-		"updated_at":    dto.UpdatedAt,
-		"user_id":       dto.UserID,
-		"username":      dto.Username,
-		"avatar":        dto.Avatar,
-		"title":         dto.Title,
-		"body":          dto.Body,
-		"tag":           dto.Tag,
+		"id":            post.PostID,
+		"created_at":    post.CreatedAt.Format(time.RFC3339),
+		"updated_at":    post.UpdatedAt.Format(time.RFC3339),
+		"user_id":       post.UserID,
+		"username":      username,
+		"avatar":        avatar,
+		"title":         post.Title,
+		"body":          post.Body,
+		"tag":           post.Tag,
 		"image_urls":    imageURLs,
-		"likes":         dto.Likes,
-		"comments":      dto.Comments,
+		"likes":         likes,
+		"comments":      commentCount,
 		"comments_list": fullComments,
 	}
 
@@ -249,10 +332,64 @@ func GetPostDetail(postID int) (map[string]interface{}, error) {
 	return result, nil
 }
 
-// GetSubComments 获取评论的子评论列表
+// GetSubComments 获取评论的子评论列表（批量优化）
 func GetSubComments(commentID int) []CocDTO {
 	cocs := dao.GetSubCommentsByCommentID(commentID)
+	if len(cocs) == 0 {
+		return []CocDTO{}
+	}
 
+	// 收集所有涉及的 userID 和 toCocID
+	userIDSet := map[uint]bool{}
+	toCocIDs := map[uint]bool{}
+	for _, coc := range cocs {
+		userIDSet[coc.UserID] = true
+		if coc.ToCocID != nil {
+			toCocIDs[*coc.ToCocID] = true
+		}
+	}
+
+	// 构建 coc 查找 map（用于解析 ToCocID → UserID）
+	cocMap := map[uint]models.CommentOnComments{}
+	for _, coc := range cocs {
+		cocMap[coc.CocID] = coc
+	}
+	// 不在当前列表中的 toCocID，需要额外查询
+	for tocID := range toCocIDs {
+		if _, ok := cocMap[tocID]; !ok {
+			if toCoc, err := dao.GetSubCommentByID(tocID); err == nil {
+				cocMap[tocID] = *toCoc
+				userIDSet[toCoc.UserID] = true
+			}
+		} else {
+			userIDSet[cocMap[tocID].UserID] = true
+		}
+	}
+
+	// 批量查询用户和头像
+	userIDs := make([]uint, 0, len(userIDSet))
+	for uid := range userIDSet {
+		userIDs = append(userIDs, uid)
+	}
+
+	var (
+		userMap   map[uint]models.User
+		avatarMap map[uint]string
+		wg        sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() { defer wg.Done(); userMap = dao.GetUsersByIDs(userIDs) }()
+	go func() { defer wg.Done(); avatarMap = dao.GetUserAvatarsBatch(userIDs) }()
+	wg.Wait()
+
+	getAvatar := func(uid uint) *string {
+		if url, ok := avatarMap[uid]; ok {
+			return &url
+		}
+		return nil
+	}
+
+	// 组装结果
 	result := make([]CocDTO, 0, len(cocs))
 	for _, coc := range cocs {
 		dto := CocDTO{
@@ -261,21 +398,18 @@ func GetSubComments(commentID int) []CocDTO {
 			UserID:    coc.UserID,
 			Body:      coc.Body,
 			ToCocID:   coc.ToCocID,
+			Avatar:    getAvatar(coc.UserID),
 		}
 
-		user, err := dao.GetUserByID(coc.UserID)
-		if err == nil {
-			dto.Username = user.Username
-			dto.Avatar = dao.GetUserAvatar(user.ID)
+		if u, ok := userMap[coc.UserID]; ok {
+			dto.Username = u.Username
 		}
 
 		if coc.ToCocID != nil {
-			toCoc, err := dao.GetSubCommentByID(*coc.ToCocID)
-			if err == nil {
-				dto.ToUserID = &toCoc.UserID
-				toUser, err := dao.GetUserByID(toCoc.UserID)
-				if err == nil {
-					dto.ToUsername = &toUser.Username
+			if tc, ok := cocMap[*coc.ToCocID]; ok {
+				dto.ToUserID = &tc.UserID
+				if tu, ok := userMap[tc.UserID]; ok {
+					dto.ToUsername = &tu.Username
 				}
 			}
 		}

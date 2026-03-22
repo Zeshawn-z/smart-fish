@@ -37,7 +37,7 @@ func GetMyFishingStats(c *gin.Context) {
 func ListFishingRecords(c *gin.Context) {
 	query := dao.ListFishingRecordsQuery(c.Query("user_id"))
 
-	utils.PaginateMap[models.FishingRecord, services.FishingRecordDTO](c, query, "record_id DESC", services.FishingRecordToDTO)
+	utils.PaginateMapConcurrent[models.FishingRecord, services.FishingRecordDTO](c, query, "record_id DESC", services.FishingRecordToDTO)
 }
 
 // GetFishingRecordByID GET /api/fishing-records/:id
@@ -102,8 +102,8 @@ func CreateFishingRecordV2(c *gin.Context) {
 		return
 	}
 
-	services.InvalidateFishingStatsCache(userID.(uint))
-	services.InvalidateSummaryCache()
+	go services.InvalidateFishingStatsCache(userID.(uint))
+	go services.InvalidateSummaryCache()
 	c.JSON(http.StatusCreated, services.FishingRecordToDTO(record))
 }
 
@@ -130,7 +130,7 @@ func DeleteFishingRecordV2(c *gin.Context) {
 func ListFishCaught(c *gin.Context) {
 	query := dao.ListFishCaughtQuery(c.Query("record_id"))
 
-	utils.PaginateMap[models.FishCaught, services.FishCaughtDTO](c, query, "fish_id DESC", services.FishCaughtToDTO)
+	utils.PaginateMapConcurrent[models.FishCaught, services.FishCaughtDTO](c, query, "fish_id DESC", services.FishCaughtToDTO)
 }
 
 // CreateFishCaughtV2 POST /api/fish-caught

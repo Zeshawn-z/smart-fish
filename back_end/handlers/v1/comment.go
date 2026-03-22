@@ -16,12 +16,18 @@ func GetCommentList(c *gin.Context) {
 
 	comments := dao.GetCommentsByPostIDV1(postID)
 
+	// 批量收集 userID，一次查出所有用户
+	userIDs := make([]uint, 0, len(comments))
+	for _, comment := range comments {
+		userIDs = append(userIDs, comment.UserID)
+	}
+	userMap := dao.GetUsersByIDs(userIDs)
+
 	commentsList := make([]gin.H, 0, len(comments))
 	for _, comment := range comments {
-		// 查询用户名
 		username := ""
-		if user, err := dao.GetUserByID(comment.UserID); err == nil {
-			username = user.Username
+		if u, ok := userMap[comment.UserID]; ok {
+			username = u.Username
 		}
 
 		commentsList = append(commentsList, gin.H{
@@ -89,12 +95,42 @@ func GetCommentOnComments(c *gin.Context) {
 
 	cocs := dao.GetSubCommentsByCommentIDV1(commentID)
 
+	// 批量收集所有 userID 和 toCocID
+	userIDSet := map[uint]bool{}
+	toCocIDs := map[uint]bool{}
+	cocMap := map[uint]models.CommentOnComments{}
+	for _, coc := range cocs {
+		userIDSet[coc.UserID] = true
+		cocMap[coc.CocID] = coc
+		if coc.ToCocID != nil {
+			toCocIDs[*coc.ToCocID] = true
+		}
+	}
+
+	// 查询不在列表中的 toCoc
+	for tocID := range toCocIDs {
+		if _, ok := cocMap[tocID]; !ok {
+			if toCoc, err := dao.GetCocByCocID(tocID); err == nil {
+				cocMap[tocID] = *toCoc
+				userIDSet[toCoc.UserID] = true
+			}
+		} else {
+			userIDSet[cocMap[tocID].UserID] = true
+		}
+	}
+
+	// 一次性批量查询所有用户
+	userIDs := make([]uint, 0, len(userIDSet))
+	for uid := range userIDSet {
+		userIDs = append(userIDs, uid)
+	}
+	userMap := dao.GetUsersByIDs(userIDs)
+
 	result := make([]gin.H, 0, len(cocs))
 	for _, coc := range cocs {
-		// 查询评论者用户名
 		username := ""
-		if user, err := dao.GetUserByID(coc.UserID); err == nil {
-			username = user.Username
+		if u, ok := userMap[coc.UserID]; ok {
+			username = u.Username
 		}
 
 		item := gin.H{
@@ -108,15 +144,13 @@ func GetCommentOnComments(c *gin.Context) {
 			"body":        coc.Body,
 		}
 
-		// 处理回复评论
 		if coc.ToCocID != nil {
 			item["to_coc_id"] = *coc.ToCocID
 
-			if toCoc, err := dao.GetCocByCocID(*coc.ToCocID); err == nil {
-				item["to_user_id"] = toCoc.UserID
-
-				if toUser, err := dao.GetUserByID(toCoc.UserID); err == nil {
-					item["to_username"] = toUser.Username
+			if tc, ok := cocMap[*coc.ToCocID]; ok {
+				item["to_user_id"] = tc.UserID
+				if tu, ok := userMap[tc.UserID]; ok {
+					item["to_username"] = tu.Username
 				}
 			}
 		}
@@ -124,7 +158,6 @@ func GetCommentOnComments(c *gin.Context) {
 		result = append(result, item)
 	}
 
-	// Flask 返回 comment_id 为 int 类型
 	c.JSON(http.StatusOK, gin.H{
 		"comment_id": commentID,
 		"comments":   result,

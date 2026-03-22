@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"smart-fish/back_end/cache"
 	"smart-fish/back_end/dao"
@@ -66,7 +67,7 @@ type RegionEnvHistory struct {
 	Records    []dao.RegionEnvRecord `json:"records"`
 }
 
-// GetRegionEnvironment 获取各区域最新环境数据（带缓存）
+// GetRegionEnvironment 获取各区域最新环境数据（带缓存 + 并发查询）
 func GetRegionEnvironment() []RegionEnvItem {
 	// 尝试从缓存获取
 	var cached []RegionEnvItem
@@ -75,29 +76,47 @@ func GetRegionEnvironment() []RegionEnvItem {
 	}
 
 	regions := dao.GetAllRegions()
+
+	// 每个区域的查询互相独立，并发执行
+	items := make([]RegionEnvItem, len(regions))
+	valid := make([]bool, len(regions))
+	var wg sync.WaitGroup
+
+	for i, region := range regions {
+		wg.Add(1)
+		go func(idx int, r models.Region) {
+			defer wg.Done()
+			spotIDs := dao.GetOpenSpotIDsByRegionID(r.ID)
+			if len(spotIDs) == 0 {
+				return
+			}
+
+			avg := dao.GetLatestEnvAvgBySpotIDs(spotIDs)
+			items[idx] = RegionEnvItem{
+				RegionID:   r.ID,
+				RegionName: r.Name,
+				City:       r.City,
+				SpotCount:  len(spotIDs),
+				WaterTemp:  avg.WaterTemp,
+				AirTemp:    avg.AirTemp,
+				Humidity:   avg.Humidity,
+				Pressure:   avg.Pressure,
+				PH:         avg.PH,
+				DO:         avg.DO,
+				Turbidity:  avg.Turbidity,
+				Timestamp:  avg.Timestamp,
+			}
+			valid[idx] = true
+		}(i, region)
+	}
+	wg.Wait()
+
+	// 过滤掉无数据的区域
 	result := make([]RegionEnvItem, 0, len(regions))
-
-	for _, region := range regions {
-		spotIDs := dao.GetOpenSpotIDsByRegionID(region.ID)
-		if len(spotIDs) == 0 {
-			continue
+	for i, item := range items {
+		if valid[i] {
+			result = append(result, item)
 		}
-
-		avg := dao.GetLatestEnvAvgBySpotIDs(spotIDs)
-		result = append(result, RegionEnvItem{
-			RegionID:   region.ID,
-			RegionName: region.Name,
-			City:       region.City,
-			SpotCount:  len(spotIDs),
-			WaterTemp:  avg.WaterTemp,
-			AirTemp:    avg.AirTemp,
-			Humidity:   avg.Humidity,
-			Pressure:   avg.Pressure,
-			PH:         avg.PH,
-			DO:         avg.DO,
-			Turbidity:  avg.Turbidity,
-			Timestamp:  avg.Timestamp,
-		})
 	}
 
 	// 写入缓存
