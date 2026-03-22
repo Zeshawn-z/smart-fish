@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
 
@@ -14,15 +14,13 @@ import (
 func GetCommentList(c *gin.Context) {
 	postID := c.Param("post_id")
 
-	var comments []models.Comment
-	database.DB.Where("post_id = ? AND is_deleted = ?", postID, false).Find(&comments)
+	comments := dao.GetCommentsByPostIDV1(postID)
 
 	commentsList := make([]gin.H, 0, len(comments))
 	for _, comment := range comments {
-		// 查询用户名（Go User 表主键是 id）
-		var user models.User
+		// 查询用户名
 		username := ""
-		if err := database.DB.First(&user, comment.UserID).Error; err == nil {
+		if user, err := dao.GetUserByID(comment.UserID); err == nil {
 			username = user.Username
 		}
 
@@ -48,8 +46,8 @@ func CreateComment(c *gin.Context) {
 	}
 
 	// 验证帖子存在
-	var post models.Post
-	if err := database.DB.Where("post_id = ?", postID).First(&post).Error; err != nil {
+	post, err := dao.GetPostByPostID(parseUintSafe(postID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
@@ -68,7 +66,7 @@ func CreateComment(c *gin.Context) {
 		Body:   input.Body,
 	}
 
-	if err := database.DB.Create(&comment).Error; err != nil {
+	if err := dao.CreateComment(&comment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to create comment"})
 		return
 	}
@@ -83,22 +81,19 @@ func CreateComment(c *gin.Context) {
 func GetCommentOnComments(c *gin.Context) {
 	commentIDStr := c.Param("comment_id")
 
-	// 解析 comment_id 为 uint，与 Flask 返回的 int 类型一致
 	commentID, err := parseUintParam(commentIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Invalid comment_id"})
 		return
 	}
 
-	var cocs []models.CommentOnComments
-	database.DB.Where("comment_id = ? AND is_deleted = ?", commentID, false).Find(&cocs)
+	cocs := dao.GetSubCommentsByCommentIDV1(commentID)
 
 	result := make([]gin.H, 0, len(cocs))
 	for _, coc := range cocs {
-		// 查询评论者用户名（Go User 表主键是 id）
-		var user models.User
+		// 查询评论者用户名
 		username := ""
-		if err := database.DB.First(&user, coc.UserID).Error; err == nil {
+		if user, err := dao.GetUserByID(coc.UserID); err == nil {
 			username = user.Username
 		}
 
@@ -117,12 +112,10 @@ func GetCommentOnComments(c *gin.Context) {
 		if coc.ToCocID != nil {
 			item["to_coc_id"] = *coc.ToCocID
 
-			var toCoc models.CommentOnComments
-			if err := database.DB.Where("coc_id = ?", *coc.ToCocID).First(&toCoc).Error; err == nil {
+			if toCoc, err := dao.GetCocByCocID(*coc.ToCocID); err == nil {
 				item["to_user_id"] = toCoc.UserID
 
-				var toUser models.User
-				if err := database.DB.First(&toUser, toCoc.UserID).Error; err == nil {
+				if toUser, err := dao.GetUserByID(toCoc.UserID); err == nil {
 					item["to_username"] = toUser.Username
 				}
 			}
@@ -155,13 +148,11 @@ func CreateCommentOnComments(c *gin.Context) {
 		return
 	}
 
-	// 解析 comment_id 字符串为 uint
-	var cid uint
-	if _, err := parseUintParam(commentID); err != nil {
+	cid, err := parseUintParam(commentID)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Invalid comment_id"})
 		return
 	}
-	cid, _ = parseUintParam(commentID)
 
 	coc := models.CommentOnComments{
 		CommentID: cid,
@@ -169,7 +160,7 @@ func CreateCommentOnComments(c *gin.Context) {
 		Body:      input.Body,
 	}
 
-	if err := database.DB.Create(&coc).Error; err != nil {
+	if err := dao.CreateSubComment(&coc); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to create COC"})
 		return
 	}
@@ -205,8 +196,8 @@ func CreateCommentOnCocs(c *gin.Context) {
 	}
 
 	// 查找原始 COC 获取其 comment_id
-	var originalCoc models.CommentOnComments
-	if err := database.DB.Where("coc_id = ?", cocID).First(&originalCoc).Error; err != nil {
+	originalCoc, err := dao.GetCocByCocID(cocID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "COC not found"})
 		return
 	}
@@ -218,7 +209,7 @@ func CreateCommentOnCocs(c *gin.Context) {
 		ToCocID:   &cocID,
 	}
 
-	if err := database.DB.Create(&newCoc).Error; err != nil {
+	if err := dao.CreateSubComment(&newCoc); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to create COC"})
 		return
 	}
@@ -230,14 +221,8 @@ func CreateCommentOnCocs(c *gin.Context) {
 	})
 }
 
-// parseUintParam 从路径参数字符串解析 uint
-func parseUintParam(s string) (uint, error) {
-	var n uint
-	for _, ch := range s {
-		if ch < '0' || ch > '9' {
-			return 0, gin.Error{Err: nil}
-		}
-		n = n*10 + uint(ch-'0')
-	}
-	return n, nil
+// parseUintSafe 安全地将 string 转为 uint，出错返回 0
+func parseUintSafe(s string) uint {
+	n, _ := parseUintParam(s)
+	return n
 }

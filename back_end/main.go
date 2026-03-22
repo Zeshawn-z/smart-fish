@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"smart-fish/back_end/cache"
 	"smart-fish/back_end/config"
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/routes"
@@ -25,6 +26,9 @@ func main() {
 
 	// 连接数据库
 	database.Connect()
+
+	// 连接 Redis（可选，连接失败时退化为纯 DB 模式）
+	cache.Connect()
 
 	// 自动迁移
 	database.Migrate()

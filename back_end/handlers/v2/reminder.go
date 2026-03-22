@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/models"
 	"smart-fish/back_end/utils"
 
@@ -13,17 +13,11 @@ import (
 
 // ListReminders 获取提醒列表
 func ListReminders(c *gin.Context) {
-	query := database.DB.Model(&models.Reminder{})
-
-	if spotID := c.Query("spot_id"); spotID != "" {
-		query = query.Where("spot_id = ?", spotID)
-	}
-	if level := c.Query("level"); level != "" {
-		query = query.Where("level = ?", level)
-	}
-	if resolved := c.Query("resolved"); resolved != "" {
-		query = query.Where("resolved = ?", resolved == "true")
-	}
+	query := dao.ListRemindersQuery(
+		c.Query("spot_id"),
+		c.Query("level"),
+		c.Query("resolved"),
+	)
 
 	utils.Paginate[models.Reminder](c, query, "timestamp DESC")
 }
@@ -36,8 +30,8 @@ func GetReminder(c *gin.Context) {
 		return
 	}
 
-	var reminder models.Reminder
-	if err := database.DB.First(&reminder, id).Error; err != nil {
+	reminder, err := dao.GetReminderByID(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "提醒不存在"})
 		return
 	}
@@ -73,7 +67,7 @@ func CreateReminder(c *gin.Context) {
 	}
 	reminder.Timestamp = reminder.CreatedAt
 
-	if err := database.DB.Create(&reminder).Error; err != nil {
+	if err := dao.CreateReminder(&reminder); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
 		return
 	}
@@ -89,13 +83,13 @@ func ResolveReminder(c *gin.Context) {
 		return
 	}
 
-	var reminder models.Reminder
-	if err := database.DB.First(&reminder, id).Error; err != nil {
+	reminder, err := dao.GetReminderByID(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "提醒不存在"})
 		return
 	}
 
-	database.DB.Model(&reminder).Update("resolved", true)
+	dao.ResolveReminder(reminder)
 	c.JSON(http.StatusOK, gin.H{"message": "已标记为已处理"})
 }
 
@@ -107,7 +101,7 @@ func DeleteReminder(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Delete(&models.Reminder{}, id).Error; err != nil {
+	if err := dao.DeleteReminder(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
 	}

@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
 
@@ -24,9 +24,10 @@ func V1Login(c *gin.Context) {
 	}
 
 	// 先按 email 查找，再按 username 查找（兼容 Flask 逻辑）
-	var user models.User
-	if err := database.DB.Where("email = ?", input.Account).First(&user).Error; err != nil {
-		if err := database.DB.Where("username = ?", input.Account).First(&user).Error; err != nil {
+	user, err := dao.GetUserByEmail(input.Account)
+	if err != nil {
+		user, err = dao.GetUserByUsername(input.Account)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "Invalid username or password"})
 			return
 		}
@@ -86,16 +87,15 @@ func V1Register(c *gin.Context) {
 	}
 
 	// 检查用户名唯一
-	var count int64
-	database.DB.Model(&models.User{}).Where("username = ?", input.Username).Count(&count)
+	count, _ := dao.CountUsersByUsername(input.Username)
 	if count > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Username already exists"})
 		return
 	}
 
 	// 检查邮箱唯一
-	database.DB.Model(&models.User{}).Where("email = ?", input.Email).Count(&count)
-	if count > 0 {
+	emailCount, _ := dao.CountUsersByEmail(input.Email)
+	if emailCount > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Email already exists"})
 		return
 	}
@@ -114,7 +114,7 @@ func V1Register(c *gin.Context) {
 		Role:         "user",
 	}
 
-	if err := database.DB.Create(&user).Error; err != nil {
+	if err := dao.CreateUser(&user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Registration failed"})
 		return
 	}
@@ -135,27 +135,27 @@ func V1GetUser(c *gin.Context) {
 		return
 	}
 
-	var user models.User
+	var user *models.User
+	var err error
+
 	if uid != "" {
-		if err := database.DB.First(&user, uid).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User is not exist"})
-			return
-		}
+		user, err = dao.GetUserByID(uid)
 	} else if email != "" {
-		if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "User is not exist"})
-			return
-		}
+		user, err = dao.GetUserByEmail(email)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Must provide uid or email"})
 		return
 	}
 
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User is not exist"})
+		return
+	}
+
 	// 查找头像
-	var avatar models.Image
 	var avatarURL interface{} = nil
-	if err := database.DB.Where("user_id = ? AND is_avatar = ? AND is_deleted = ?", user.ID, true, false).First(&avatar).Error; err == nil {
-		avatarURL = avatar.ImageURL
+	if url := dao.GetUserAvatar(user.ID); url != nil {
+		avatarURL = *url
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -174,16 +174,15 @@ func V1GetUserSelf(c *gin.Context) {
 		return
 	}
 
-	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	user, err := dao.GetUserByID(userID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
-	var avatar models.Image
 	var avatarURL interface{} = nil
-	if err := database.DB.Where("user_id = ? AND is_avatar = ? AND is_deleted = ?", userID, true, false).First(&avatar).Error; err == nil {
-		avatarURL = avatar.ImageURL
+	if url := dao.GetUserAvatar(user.ID); url != nil {
+		avatarURL = *url
 	}
 
 	c.JSON(http.StatusOK, gin.H{

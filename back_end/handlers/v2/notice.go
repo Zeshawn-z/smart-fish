@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/models"
 	"smart-fish/back_end/utils"
 
@@ -13,15 +13,10 @@ import (
 
 // ListNotices 获取通知列表
 func ListNotices(c *gin.Context) {
-	query := database.DB.Model(&models.Notice{})
-
-	if outdated := c.Query("outdated"); outdated != "" {
-		query = query.Where("outdated = ?", outdated == "true")
-	}
-	if search := c.Query("search"); search != "" {
-		query = query.Where("title LIKE ? OR content LIKE ?",
-			"%"+search+"%", "%"+search+"%")
-	}
+	query := dao.ListNoticesQuery(
+		c.Query("outdated"),
+		c.Query("search"),
+	)
 
 	utils.Paginate[models.Notice](c, query, "timestamp DESC")
 }
@@ -34,8 +29,8 @@ func GetNotice(c *gin.Context) {
 		return
 	}
 
-	var notice models.Notice
-	if err := database.DB.Preload("RelatedSpots").First(&notice, id).Error; err != nil {
+	notice, err := dao.GetNoticeByID(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "通知不存在"})
 		return
 	}
@@ -46,9 +41,9 @@ func GetNotice(c *gin.Context) {
 // CreateNotice 创建通知
 func CreateNotice(c *gin.Context) {
 	var input struct {
-		Title    string `json:"title" binding:"required"`
-		Content  string `json:"content" binding:"required"`
-		SpotIDs  []uint `json:"spot_ids"`
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content" binding:"required"`
+		SpotIDs []uint `json:"spot_ids"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数验证失败: " + err.Error()})
@@ -61,23 +56,14 @@ func CreateNotice(c *gin.Context) {
 	}
 	notice.Timestamp = notice.CreatedAt
 
-	if err := database.DB.Create(&notice).Error; err != nil {
+	if err := dao.CreateNotice(&notice); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
 		return
 	}
 
 	// 关联水域
-	if len(input.SpotIDs) > 0 {
-		var spots []models.FishingSpot
-		database.DB.Where("id IN ?", input.SpotIDs).Find(&spots)
-		spotPtrs := make([]*models.FishingSpot, len(spots))
-		for i := range spots {
-			spotPtrs[i] = &spots[i]
-		}
-		database.DB.Model(&notice).Association("RelatedSpots").Replace(spotPtrs)
-	}
-
-	database.DB.Preload("RelatedSpots").First(&notice, notice.ID)
+	dao.ReplaceNoticeSpots(&notice, input.SpotIDs)
+	dao.RefreshNotice(&notice, int(notice.ID))
 	c.JSON(http.StatusCreated, notice)
 }
 
@@ -89,8 +75,8 @@ func UpdateNotice(c *gin.Context) {
 		return
 	}
 
-	var notice models.Notice
-	if err := database.DB.First(&notice, id).Error; err != nil {
+	notice, err := dao.GetNoticeByIDSimple(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "通知不存在"})
 		return
 	}
@@ -118,20 +104,14 @@ func UpdateNotice(c *gin.Context) {
 	}
 
 	if len(updates) > 0 {
-		database.DB.Model(&notice).Updates(updates)
+		dao.UpdateNotice(notice, updates)
 	}
 
 	if input.SpotIDs != nil {
-		var spots []models.FishingSpot
-		database.DB.Where("id IN ?", input.SpotIDs).Find(&spots)
-		spotPtrs := make([]*models.FishingSpot, len(spots))
-		for i := range spots {
-			spotPtrs[i] = &spots[i]
-		}
-		database.DB.Model(&notice).Association("RelatedSpots").Replace(spotPtrs)
+		dao.ReplaceNoticeSpots(notice, input.SpotIDs)
 	}
 
-	database.DB.Preload("RelatedSpots").First(&notice, id)
+	dao.RefreshNotice(notice, id)
 	c.JSON(http.StatusOK, notice)
 }
 
@@ -143,7 +123,7 @@ func DeleteNotice(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Delete(&models.Notice{}, id).Error; err != nil {
+	if err := dao.DeleteNotice(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
 	}

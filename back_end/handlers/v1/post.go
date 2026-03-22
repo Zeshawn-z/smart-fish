@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
 
@@ -12,16 +12,14 @@ import (
 
 // GetPostList GET /api/v1/post - 获取所有帖子列表
 func GetPostList(c *gin.Context) {
-	var posts []models.Post
-	database.DB.Where("is_deleted = ?", false).Find(&posts)
+	posts := dao.GetAllPostsV1()
 
 	postsList := make([]gin.H, 0, len(posts))
 	for _, post := range posts {
 		// 获取帖子的第一张图片
-		var image models.Image
 		var imageURL interface{} = nil
-		if err := database.DB.Where("post_id = ? AND is_deleted = ?", post.PostID, false).First(&image).Error; err == nil {
-			imageURL = image.ImageURL
+		if url := dao.GetFirstImageByPostID(post.PostID); url != nil {
+			imageURL = *url
 		}
 
 		postsList = append(postsList, gin.H{
@@ -45,15 +43,13 @@ func GetPostSelf(c *gin.Context) {
 		return
 	}
 
-	var posts []models.Post
-	database.DB.Where("user_id = ? AND is_deleted = ?", userID, false).Find(&posts)
+	posts := dao.GetPostsByUserIDV1(userID)
 
 	postsList := make([]gin.H, 0, len(posts))
 	for _, post := range posts {
-		var image models.Image
 		var imageURL interface{} = nil
-		if err := database.DB.Where("post_id = ? AND is_deleted = ?", post.PostID, false).First(&image).Error; err == nil {
-			imageURL = image.ImageURL
+		if url := dao.GetFirstImageByPostID(post.PostID); url != nil {
+			imageURL = *url
 		}
 
 		postsList = append(postsList, gin.H{
@@ -94,7 +90,7 @@ func CreatePost(c *gin.Context) {
 		Tag:    input.Tag,
 	}
 
-	if err := database.DB.Create(&post).Error; err != nil {
+	if err := dao.CreatePost(&post); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to create post"})
 		return
 	}
@@ -109,15 +105,14 @@ func CreatePost(c *gin.Context) {
 func GetPost(c *gin.Context) {
 	postID := c.Param("post_id")
 
-	var post models.Post
-	if err := database.DB.Where("post_id = ?", postID).First(&post).Error; err != nil {
+	post, err := dao.GetPostByPostIDUint(parseUintSafe(postID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
 	// 获取帖子的所有图片
-	var images []models.Image
-	database.DB.Where("post_id = ? AND is_deleted = ?", post.PostID, false).Find(&images)
+	images := dao.GetImagesByPostID(post.PostID)
 	imageURLs := make([]string, 0, len(images))
 	for _, img := range images {
 		imageURLs = append(imageURLs, img.ImageURL)

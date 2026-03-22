@@ -170,3 +170,15 @@ func parseFlexibleTime(s string) (time.Time, error) {
 
 	return time.Time{}, fmt.Errorf("cannot parse time: %s", s)
 }
+
+// parseUintParam 从路径参数字符串解析 uint
+func parseUintParam(s string) (uint, error) {
+	var n uint
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return 0, fmt.Errorf("invalid uint: %s", s)
+		}
+		n = n*10 + uint(ch-'0')
+	}
+	return n, nil
+}
