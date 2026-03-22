@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/services"
 	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
@@ -13,21 +14,12 @@ import (
 
 // ListFishingSpots 获取垂钓水域列表
 func ListFishingSpots(c *gin.Context) {
-	query := database.DB.Preload("Region").Preload("BoundDevice").Model(&models.FishingSpot{})
-
-	if regionID := c.Query("region_id"); regionID != "" {
-		query = query.Where("region_id = ?", regionID)
-	}
-	if status := c.Query("status"); status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if waterType := c.Query("water_type"); waterType != "" {
-		query = query.Where("water_type = ?", waterType)
-	}
-	if search := c.Query("search"); search != "" {
-		query = query.Where("name LIKE ? OR description LIKE ?",
-			"%"+search+"%", "%"+search+"%")
-	}
+	query := dao.ListFishingSpotsQuery(
+		c.Query("region_id"),
+		c.Query("status"),
+		c.Query("water_type"),
+		c.Query("search"),
+	)
 
 	utils.Paginate[models.FishingSpot](c, query, "id DESC")
 }
@@ -40,8 +32,8 @@ func GetFishingSpot(c *gin.Context) {
 		return
 	}
 
-	var spot models.FishingSpot
-	if err := database.DB.Preload("Region").Preload("BoundDevice").First(&spot, id).Error; err != nil {
+	spot, err := dao.GetFishingSpotByID(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "水域不存在"})
 		return
 	}
@@ -77,12 +69,12 @@ func CreateFishingSpot(c *gin.Context) {
 		BoundDeviceID: input.BoundDeviceID,
 	}
 
-	if err := database.DB.Create(&spot).Error; err != nil {
+	if err := dao.CreateFishingSpot(&spot); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
 		return
 	}
 
-	database.DB.Preload("Region").First(&spot, spot.ID)
+	dao.RefreshFishingSpot(&spot, int(spot.ID))
 	c.JSON(http.StatusCreated, spot)
 }
 
@@ -94,19 +86,22 @@ func UpdateFishingSpot(c *gin.Context) {
 		return
 	}
 
-	var spot models.FishingSpot
-	if err := database.DB.First(&spot, id).Error; err != nil {
+	spot, err := dao.GetFishingSpotByIDSimple(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "水域不存在"})
 		return
 	}
 
-	if err := c.ShouldBindJSON(&spot); err != nil {
+	if err := c.ShouldBindJSON(spot); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数验证失败"})
 		return
 	}
 
-	database.DB.Save(&spot)
-	database.DB.Preload("Region").First(&spot, id)
+	if err := dao.SaveFishingSpot(spot); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	dao.RefreshFishingSpot(spot, id)
 	c.JSON(http.StatusOK, spot)
 }
 
@@ -118,7 +113,7 @@ func DeleteFishingSpot(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Delete(&models.FishingSpot{}, id).Error; err != nil {
+	if err := dao.DeleteFishingSpot(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
 	}
@@ -133,22 +128,7 @@ func GetPopularSpots(c *gin.Context) {
 		limit = 5
 	}
 
-	type PopularSpot struct {
-		models.FishingSpot
-		TotalFishingCount int `json:"total_fishing_count"`
-	}
-
-	// 通过绑定设备获取实时垂钓人数（而非历史数据总和）
-	var spots []PopularSpot
-	database.DB.Model(&models.FishingSpot{}).
-		Select("fishing_spots.*, COALESCE(devices.fishing_count, 0) as total_fishing_count").
-		Joins("LEFT JOIN devices ON devices.id = fishing_spots.bound_device_id AND devices.status = 'online'").
-		Where("fishing_spots.status = ?", "open").
-		Order("total_fishing_count DESC").
-		Limit(limit).
-		Preload("Region").
-		Find(&spots)
-
+	spots := dao.GetPopularSpots(limit)
 	c.JSON(http.StatusOK, spots)
 }
 
@@ -162,32 +142,16 @@ func ToggleFavoriteSpot(c *gin.Context) {
 
 	userID, _ := c.Get("userID")
 
-	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+	favorited, svcErr := services.ToggleFavoriteSpot(userID, spotID)
+	if svcErr != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": svcErr.Error()})
 		return
 	}
 
-	var spot models.FishingSpot
-	if err := database.DB.First(&spot, spotID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "水域不存在"})
-		return
-	}
-
-	// 检查是否已收藏
-	var count int64
-	database.DB.Table("user_favorites").
-		Where("user_id = ? AND fishing_spot_id = ?", userID, spotID).
-		Count(&count)
-
-	if count > 0 {
-		// 取消收藏
-		database.DB.Model(&user).Association("Favorites").Delete(&spot)
-		c.JSON(http.StatusOK, gin.H{"message": "已取消收藏", "favorited": false})
-	} else {
-		// 添加收藏
-		database.DB.Model(&user).Association("Favorites").Append(&spot)
+	if favorited {
 		c.JSON(http.StatusOK, gin.H{"message": "已收藏", "favorited": true})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"message": "已取消收藏", "favorited": false})
 	}
 }
 
@@ -195,13 +159,13 @@ func ToggleFavoriteSpot(c *gin.Context) {
 func GetMyFavoriteSpots(c *gin.Context) {
 	userID, _ := c.Get("userID")
 
-	var user models.User
-	if err := database.DB.Preload("Favorites.Region").First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+	favorites, err := services.GetMyFavoriteSpots(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, user.Favorites)
+	c.JSON(http.StatusOK, favorites)
 }
 
 // GetSpotHistorical 获取水域历史垂钓数据
@@ -217,12 +181,7 @@ func GetSpotHistorical(c *gin.Context) {
 		limit = 48
 	}
 
-	var data []models.HistoricalData
-	database.DB.Where("spot_id = ?", spotID).
-		Order("timestamp DESC").
-		Limit(limit).
-		Find(&data)
-
+	data := dao.GetSpotHistoricalData(spotID, limit)
 	c.JSON(http.StatusOK, data)
 }
 
@@ -239,11 +198,6 @@ func GetSpotEnvironment(c *gin.Context) {
 		limit = 48
 	}
 
-	var data []models.EnvironmentData
-	database.DB.Where("spot_id = ?", spotID).
-		Order("timestamp DESC").
-		Limit(limit).
-		Find(&data)
-
+	data := dao.GetSpotEnvironmentData(spotID, limit)
 	c.JSON(http.StatusOK, data)
 }

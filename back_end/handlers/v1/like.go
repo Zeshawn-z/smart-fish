@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
 
@@ -17,14 +17,13 @@ func GetPostLikes(c *gin.Context) {
 	postID := c.Param("post_id")
 
 	// 验证帖子存在
-	var post models.Post
-	if err := database.DB.Where("post_id = ?", postID).First(&post).Error; err != nil {
+	post, err := dao.GetPostByPostIDUint(parseUintSafe(postID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	var count int64
-	database.DB.Model(&models.LikeOnPosts{}).Where("post_id = ?", postID).Count(&count)
+	count := dao.GetPostLikeCount(post.PostID)
 	c.JSON(http.StatusOK, gin.H{"likes": count})
 }
 
@@ -38,15 +37,14 @@ func CreatePostLike(c *gin.Context) {
 	}
 
 	// 验证帖子存在
-	var post models.Post
-	if err := database.DB.Where("post_id = ?", postID).First(&post).Error; err != nil {
+	post, err := dao.GetPostByPostIDUint(parseUintSafe(postID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
 	// 检查是否已点赞
-	var existing models.LikeOnPosts
-	if err := database.DB.Where("post_id = ? AND user_id = ?", post.PostID, userID).First(&existing).Error; err == nil {
+	if existing := dao.FindPostLike(post.PostID, userID); existing != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Already Liked"})
 		return
 	}
@@ -55,7 +53,7 @@ func CreatePostLike(c *gin.Context) {
 		PostID: post.PostID,
 		UserID: userID,
 	}
-	database.DB.Create(&like)
+	dao.CreatePostLike(&like)
 	c.JSON(http.StatusCreated, gin.H{"msg": "success"})
 }
 
@@ -69,14 +67,14 @@ func DeletePostLike(c *gin.Context) {
 	}
 
 	// 验证帖子存在
-	var post models.Post
-	if err := database.DB.Where("post_id = ?", postID).First(&post).Error; err != nil {
+	post, err := dao.GetPostByPostIDUint(parseUintSafe(postID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	result := database.DB.Where("post_id = ? AND user_id = ?", post.PostID, userID).Delete(&models.LikeOnPosts{})
-	if result.RowsAffected > 0 {
+	affected := dao.DeletePostLike(post.PostID, userID)
+	if affected > 0 {
 		c.JSON(http.StatusNoContent, gin.H{"msg": "success"})
 	} else {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "not found"})
@@ -89,14 +87,13 @@ func DeletePostLike(c *gin.Context) {
 func GetCommentLikes(c *gin.Context) {
 	commentID := c.Param("comment_id")
 
-	var comment models.Comment
-	if err := database.DB.Where("comment_id = ?", commentID).First(&comment).Error; err != nil {
+	comment, err := dao.GetCommentByCommentIDUint(parseUintSafe(commentID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	var count int64
-	database.DB.Model(&models.LikeOnComments{}).Where("comment_id = ?", commentID).Count(&count)
+	count := dao.GetCommentLikeCount(comment.CommentID)
 	c.JSON(http.StatusOK, gin.H{"likes": count})
 }
 
@@ -109,14 +106,13 @@ func CreateCommentLike(c *gin.Context) {
 		return
 	}
 
-	var comment models.Comment
-	if err := database.DB.Where("comment_id = ?", commentID).First(&comment).Error; err != nil {
+	comment, err := dao.GetCommentByCommentIDUint(parseUintSafe(commentID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	var existing models.LikeOnComments
-	if err := database.DB.Where("comment_id = ? AND user_id = ?", comment.CommentID, userID).First(&existing).Error; err == nil {
+	if existing := dao.FindCommentLike(comment.CommentID, userID); existing != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Already Liked"})
 		return
 	}
@@ -125,7 +121,7 @@ func CreateCommentLike(c *gin.Context) {
 		CommentID: comment.CommentID,
 		UserID:    userID,
 	}
-	database.DB.Create(&like)
+	dao.CreateCommentLike(&like)
 	c.JSON(http.StatusCreated, gin.H{"msg": "success"})
 }
 
@@ -138,14 +134,14 @@ func DeleteCommentLike(c *gin.Context) {
 		return
 	}
 
-	var comment models.Comment
-	if err := database.DB.Where("comment_id = ?", commentID).First(&comment).Error; err != nil {
+	comment, err := dao.GetCommentByCommentIDUint(parseUintSafe(commentID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	result := database.DB.Where("comment_id = ? AND user_id = ?", comment.CommentID, userID).Delete(&models.LikeOnComments{})
-	if result.RowsAffected > 0 {
+	affected := dao.DeleteCommentLike(comment.CommentID, userID)
+	if affected > 0 {
 		c.JSON(http.StatusNoContent, gin.H{"msg": "success"})
 	} else {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "not found"})
@@ -158,14 +154,13 @@ func DeleteCommentLike(c *gin.Context) {
 func GetCocLikes(c *gin.Context) {
 	cocID := c.Param("coc_id")
 
-	var coc models.CommentOnComments
-	if err := database.DB.Where("coc_id = ?", cocID).First(&coc).Error; err != nil {
+	coc, err := dao.GetCocByCocID(parseUintSafe(cocID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	var count int64
-	database.DB.Model(&models.LikeOnCOCS{}).Where("coc_id = ?", cocID).Count(&count)
+	count := dao.GetCocLikeCount(coc.CocID)
 	c.JSON(http.StatusOK, gin.H{"likes": count})
 }
 
@@ -178,14 +173,13 @@ func CreateCocLike(c *gin.Context) {
 		return
 	}
 
-	var coc models.CommentOnComments
-	if err := database.DB.Where("coc_id = ?", cocID).First(&coc).Error; err != nil {
+	coc, err := dao.GetCocByCocID(parseUintSafe(cocID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	var existing models.LikeOnCOCS
-	if err := database.DB.Where("coc_id = ? AND user_id = ?", coc.CocID, userID).First(&existing).Error; err == nil {
+	if existing := dao.FindCocLike(coc.CocID, userID); existing != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"msg": "Already Liked"})
 		return
 	}
@@ -194,7 +188,7 @@ func CreateCocLike(c *gin.Context) {
 		CocID:  coc.CocID,
 		UserID: userID,
 	}
-	database.DB.Create(&like)
+	dao.CreateCocLike(&like)
 	c.JSON(http.StatusCreated, gin.H{"msg": "success"})
 }
 
@@ -209,14 +203,14 @@ func DeleteCocLike(c *gin.Context) {
 
 	// Flask 原始代码这里有 bug：用 Comment.query.get_or_404(coc_id) 查错了模型
 	// 我们用正确的模型 CommentOnComments，但保持相同的接口行为
-	var coc models.CommentOnComments
-	if err := database.DB.Where("coc_id = ?", cocID).First(&coc).Error; err != nil {
+	coc, err := dao.GetCocByCocID(parseUintSafe(cocID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "Not Found"})
 		return
 	}
 
-	result := database.DB.Where("coc_id = ? AND user_id = ?", coc.CocID, userID).Delete(&models.LikeOnCOCS{})
-	if result.RowsAffected > 0 {
+	affected := dao.DeleteCocLike(coc.CocID, userID)
+	if affected > 0 {
 		c.JSON(http.StatusNoContent, gin.H{"msg": "success"})
 	} else {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "not found"})

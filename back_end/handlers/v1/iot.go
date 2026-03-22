@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/models"
 
 	"github.com/gin-gonic/gin"
@@ -44,10 +44,10 @@ func PostIoTData(c *gin.Context) {
 	}
 
 	// 获取或创建设备
-	var device models.IoTDevice
-	if err := database.DB.Where("device_id = ?", deviceID).First(&device).Error; err != nil {
-		device = models.IoTDevice{DeviceID: deviceID}
-		database.DB.Create(&device)
+	device, err := dao.GetIoTDeviceByDeviceID(deviceID)
+	if err != nil {
+		device = &models.IoTDevice{DeviceID: deviceID}
+		dao.CreateIoTDevice(device)
 	}
 
 	// 合并所有服务属性
@@ -94,7 +94,7 @@ func PostIoTData(c *gin.Context) {
 			}
 		}
 
-		database.DB.Model(&device).Updates(updates)
+		dao.UpdateIoTDeviceFields(device, updates)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Data updated successfully"})
@@ -104,8 +104,8 @@ func PostIoTData(c *gin.Context) {
 func GetIoTData(c *gin.Context) {
 	deviceID := c.Param("device_id")
 
-	var device models.IoTDevice
-	if err := database.DB.Where("device_id = ?", deviceID).First(&device).Error; err != nil {
+	device, err := dao.GetIoTDeviceByDeviceID(deviceID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Device not found"})
 		return
 	}

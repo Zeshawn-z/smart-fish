@@ -6,12 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"smart-fish/back_end/database"
 	v1 "smart-fish/back_end/handlers/v1"
 	v2 "smart-fish/back_end/handlers/v2"
 	"smart-fish/back_end/middleware"
-	"smart-fish/back_end/models"
-	"smart-fish/back_end/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -235,31 +232,9 @@ func Setup(r *gin.Engine, frontendFS *embed.FS) {
 	// --- 用户管理（仅admin） ---
 	users := apiv2.Group("/users", middleware.AuthRequired(), middleware.AdminRequired())
 	{
-		users.GET("", func(c *gin.Context) {
-			query := database.DB.Model(&models.User{})
-			utils.PaginateMap[models.User, models.UserResponse](c, query, "id DESC", func(u models.User) models.UserResponse {
-				return u.ToResponse()
-			})
-		})
-		users.PATCH("/:id/role", func(c *gin.Context) {
-			var input struct {
-				Role string `json:"role" binding:"required"`
-			}
-			if err := c.ShouldBindJSON(&input); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "参数验证失败"})
-				return
-			}
-			if input.Role != "user" && input.Role != "staff" && input.Role != "admin" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "无效角色，可选: user, staff, admin"})
-				return
-			}
-			database.DB.Model(&models.User{}).Where("id = ?", c.Param("id")).Update("role", input.Role)
-			c.JSON(http.StatusOK, gin.H{"message": "角色更新成功"})
-		})
-		users.DELETE("/:id", func(c *gin.Context) {
-			database.DB.Delete(&models.User{}, c.Param("id"))
-			c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
-		})
+		users.GET("", v2.ListUsers)
+		users.PATCH("/:id/role", v2.UpdateUserRole)
+		users.DELETE("/:id", v2.DeleteUser)
 	}
 
 	// ========== Flask SFR 兼容接口 (/api/v1) ==========

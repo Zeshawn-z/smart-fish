@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/models"
+	"smart-fish/back_end/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -43,7 +44,7 @@ func UploadFishingData(c *gin.Context) {
 		Timestamp:    time.Now(),
 	}
 
-	if err := database.DB.Create(&data).Error; err != nil {
+	if err := dao.CreateHistoricalData(&data); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传失败"})
 		return
 	}
@@ -80,16 +81,18 @@ func UploadEnvironmentData(c *gin.Context) {
 		Timestamp:       time.Now(),
 	}
 
-	if err := database.DB.Create(&data).Error; err != nil {
+	if err := dao.CreateEnvironmentData(&data); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传失败"})
 		return
 	}
 
+	services.InvalidateRegionEnvCache()
+
 	// 同时更新关联设备的最新传感器数据
-	var spot models.FishingSpot
-	if database.DB.First(&spot, input.SpotID).Error == nil && spot.BoundDeviceID != nil {
+	spot, err := dao.GetFishingSpotByIDRaw(input.SpotID)
+	if err == nil && spot.BoundDeviceID != nil {
 		now := time.Now()
-		database.DB.Model(&models.Device{}).Where("id = ?", *spot.BoundDeviceID).Updates(map[string]interface{}{
+		dao.UpdateDeviceFields(*spot.BoundDeviceID, map[string]interface{}{
 			"water_temp":     input.WaterTemp,
 			"air_temp":       input.AirTemp,
 			"humidity":       input.Humidity,
@@ -123,7 +126,7 @@ func UploadWaterQualityData(c *gin.Context) {
 		Timestamp:       time.Now(),
 	}
 
-	if err := database.DB.Create(&data).Error; err != nil {
+	if err := dao.CreateWaterQualityData(&data); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传失败"})
 		return
 	}
@@ -162,8 +165,8 @@ func UploadDeviceStatus(c *gin.Context) {
 		updates["status"] = "online"
 	}
 
-	result := database.DB.Model(&models.Device{}).Where("id = ?", input.DeviceID).Updates(updates)
-	if result.RowsAffected == 0 {
+	affected := dao.UpdateDeviceFields(input.DeviceID, updates)
+	if affected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在"})
 		return
 	}
@@ -204,7 +207,6 @@ func UploadImage(c *gin.Context) {
 
 	// MIME 类型校验
 	contentType := file.Header.Get("Content-Type")
-	// 取分号前的主类型（如 "image/jpeg; charset=utf-8" → "image/jpeg"）
 	mimeType := strings.Split(contentType, ";")[0]
 	mimeType = strings.TrimSpace(mimeType)
 	if !allowedImageTypes[mimeType] {
@@ -249,8 +251,8 @@ func UploadImage(c *gin.Context) {
 		var eid uint
 		fmt.Sscanf(entityIDStr, "%d", &eid)
 		// 验证帖子存在且属于当前用户
-		var post models.Post
-		if err := database.DB.Where("post_id = ?", eid).First(&post).Error; err != nil {
+		post, err := dao.GetPostByPostID(eid)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "帖子不存在"})
 			return
 		}
@@ -267,8 +269,8 @@ func UploadImage(c *gin.Context) {
 		}
 		var eid uint
 		fmt.Sscanf(entityIDStr, "%d", &eid)
-		var comment models.Comment
-		if err := database.DB.Where("comment_id = ?", eid).First(&comment).Error; err != nil {
+		comment, err := dao.GetCommentByCommentID(eid)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "评论不存在"})
 			return
 		}
@@ -285,13 +287,13 @@ func UploadImage(c *gin.Context) {
 		}
 		var eid uint
 		fmt.Sscanf(entityIDStr, "%d", &eid)
-		var fish models.FishCaught
-		if err := database.DB.Where("fish_id = ?", eid).First(&fish).Error; err != nil {
+		fish, err := dao.GetFishCaughtByFishID(eid)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "渔获不存在"})
 			return
 		}
-		var record models.FishingRecord
-		if err := database.DB.Where("record_id = ? AND is_deleted = ?", fish.RecordID, false).First(&record).Error; err != nil || record.UserID != uid {
+		record, err := dao.GetFishingRecordByRecordID(fish.RecordID)
+		if err != nil || record.UserID != uid {
 			c.JSON(http.StatusForbidden, gin.H{"error": "无权限"})
 			return
 		}
@@ -299,9 +301,7 @@ func UploadImage(c *gin.Context) {
 
 	case "avatar":
 		// 软删除旧头像
-		database.DB.Model(&models.Image{}).
-			Where("user_id = ? AND is_avatar = ? AND is_deleted = ?", uid, true, false).
-			Update("is_deleted", true)
+		dao.SoftDeleteAvatars(uid)
 		image.IsAvatar = true
 
 	default:
@@ -309,7 +309,7 @@ func UploadImage(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Create(&image).Error; err != nil {
+	if err := dao.CreateImage(&image); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存图片记录失败"})
 		return
 	}

@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
 
@@ -14,13 +14,13 @@ import (
 func GetFishingRecord(c *gin.Context) {
 	recordID := c.Param("record_id")
 
-	var record models.FishingRecord
-	if err := database.DB.Where("record_id = ? AND is_deleted = ?", recordID, false).First(&record).Error; err != nil {
+	record, err := dao.GetFishingRecordByRecordIDString(recordID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Record not found"})
 		return
 	}
 
-	result := fetchFishingRecords([]models.FishingRecord{record})
+	result := fetchFishingRecords([]models.FishingRecord{*record})
 	c.JSON(http.StatusOK, result[0])
 }
 
@@ -32,8 +32,7 @@ func GetSelfFishingRecord(c *gin.Context) {
 		return
 	}
 
-	var records []models.FishingRecord
-	database.DB.Where("user_id = ? AND is_deleted = ?", userID, false).Find(&records)
+	records := dao.GetFishingRecordsByUserID(userID)
 
 	result := fetchFishingRecords(records)
 	c.JSON(http.StatusOK, gin.H{"records": result})
@@ -79,7 +78,7 @@ func CreateFishingRecord(c *gin.Context) {
 		Longitude: input.Longitude,
 	}
 
-	if err := database.DB.Create(&record).Error; err != nil {
+	if err := dao.CreateFishingRecord(&record); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to create record"})
 		return
 	}
@@ -113,8 +112,7 @@ func CreateFishCaught(c *gin.Context) {
 	}
 
 	// 验证该记录属于当前用户
-	var count int64
-	database.DB.Model(&models.FishingRecord{}).Where("user_id = ? AND record_id = ?", userID, input.RecordID).Count(&count)
+	count := dao.CountFishingRecordByUserAndID(userID, input.RecordID)
 	if count == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"msg": "No fishing records found"})
 		return
@@ -136,7 +134,7 @@ func CreateFishCaught(c *gin.Context) {
 		FishingDepth: input.FishingDepth,
 	}
 
-	if err := database.DB.Create(&fish).Error; err != nil {
+	if err := dao.CreateFishCaught(&fish); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to create fish caught"})
 		return
 	}
@@ -151,15 +149,13 @@ func CreateFishCaught(c *gin.Context) {
 func fetchFishingRecords(records []models.FishingRecord) []gin.H {
 	result := make([]gin.H, 0, len(records))
 	for _, record := range records {
-		var fishes []models.FishCaught
-		database.DB.Where("record_id = ?", record.RecordID).Find(&fishes)
+		fishes := dao.GetFishCaughtByRecordID(record.RecordID)
 
 		caught := make([]gin.H, 0, len(fishes))
 		for _, f := range fishes {
-			var img models.Image
 			var imageURL interface{} = nil
-			if err := database.DB.Where("fish_id = ? AND is_deleted = ?", f.FishID, false).First(&img).Error; err == nil {
-				imageURL = img.ImageURL
+			if url := dao.GetImageByFishID(f.FishID); url != nil {
+				imageURL = *url
 			}
 
 			caught = append(caught, gin.H{
@@ -188,8 +184,7 @@ func fetchFishingRecords(records []models.FishingRecord) []gin.H {
 
 		// 如果关联了 IoT 设备，附带最新设备数据
 		if record.DeviceID != "" {
-			var device models.IoTDevice
-			if err := database.DB.Where("device_id = ?", record.DeviceID).First(&device).Error; err == nil {
+			if device, err := dao.GetIoTDeviceByDeviceID(record.DeviceID); err == nil {
 				item["device_data"] = gin.H{
 					"device_id":   device.DeviceID,
 					"temperature": device.Temperature,

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/models"
 	"smart-fish/back_end/utils"
 
@@ -13,21 +13,12 @@ import (
 
 // ListDevices 获取设备列表（支持分页）
 func ListDevices(c *gin.Context) {
-	query := database.DB.Model(&models.Device{})
-
-	if gatewayID := c.Query("gateway_id"); gatewayID != "" {
-		query = query.Where("gateway_id = ?", gatewayID)
-	}
-	if status := c.Query("status"); status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if deviceType := c.Query("device_type"); deviceType != "" {
-		query = query.Where("device_type = ?", deviceType)
-	}
-	if search := c.Query("search"); search != "" {
-		query = query.Where("name LIKE ? OR description LIKE ?",
-			"%"+search+"%", "%"+search+"%")
-	}
+	query := dao.ListDevicesQuery(
+		c.Query("gateway_id"),
+		c.Query("status"),
+		c.Query("device_type"),
+		c.Query("search"),
+	)
 
 	utils.Paginate[models.Device](c, query, "id DESC")
 }
@@ -40,8 +31,8 @@ func GetDevice(c *gin.Context) {
 		return
 	}
 
-	var device models.Device
-	if err := database.DB.Preload("Gateway").First(&device, id).Error; err != nil {
+	device, err := dao.GetDeviceByID(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在"})
 		return
 	}
@@ -70,7 +61,7 @@ func CreateDevice(c *gin.Context) {
 		Status:      "offline",
 	}
 
-	if err := database.DB.Create(&device).Error; err != nil {
+	if err := dao.CreateDevice(&device); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
 		return
 	}
@@ -86,18 +77,21 @@ func UpdateDevice(c *gin.Context) {
 		return
 	}
 
-	var device models.Device
-	if err := database.DB.First(&device, id).Error; err != nil {
+	device, err := dao.GetDeviceByIDSimple(id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "设备不存在"})
 		return
 	}
 
-	if err := c.ShouldBindJSON(&device); err != nil {
+	if err := c.ShouldBindJSON(device); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数验证失败"})
 		return
 	}
 
-	database.DB.Save(&device)
+	if err := dao.SaveDevice(device); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
 	c.JSON(http.StatusOK, device)
 }
 
@@ -109,7 +103,7 @@ func DeleteDevice(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Delete(&models.Device{}, id).Error; err != nil {
+	if err := dao.DeleteDevice(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
 	}

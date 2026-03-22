@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"smart-fish/back_end/database"
+	"smart-fish/back_end/dao"
 	"smart-fish/back_end/middleware"
 	"smart-fish/back_end/models"
 
@@ -139,9 +139,7 @@ func handleImageUpload(c *gin.Context, entityType string, entityID uint) {
 
 	// 处理头像：软删除旧头像
 	if entityType == "avatar" {
-		database.DB.Model(&models.Image{}).
-			Where("user_id = ? AND is_avatar = ? AND is_deleted = ?", userID, true, false).
-			Update("is_deleted", true)
+		dao.SoftDeleteAvatars(userID)
 	}
 
 	// 创建图片记录
@@ -161,7 +159,7 @@ func handleImageUpload(c *gin.Context, entityType string, entityID uint) {
 		image.IsAvatar = true
 	}
 
-	if err := database.DB.Create(&image).Error; err != nil {
+	if err := dao.CreateImage(&image); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"msg": "Failed to save image record"})
 		return
 	}
@@ -177,8 +175,8 @@ func handleImageUpload(c *gin.Context, entityType string, entityID uint) {
 func validateEntity(c *gin.Context, entityType string, entityID, userID uint) bool {
 	switch entityType {
 	case "post":
-		var post models.Post
-		if err := database.DB.Where("post_id = ?", entityID).First(&post).Error; err != nil {
+		post, err := dao.GetPostByPostIDUint(entityID)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "Missing or invalid post_id"})
 			return false
 		}
@@ -187,8 +185,8 @@ func validateEntity(c *gin.Context, entityType string, entityID, userID uint) bo
 			return false
 		}
 	case "comment":
-		var comment models.Comment
-		if err := database.DB.Where("comment_id = ?", entityID).First(&comment).Error; err != nil {
+		comment, err := dao.GetCommentByCommentIDUint(entityID)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "Missing or invalid comment_id"})
 			return false
 		}
@@ -197,20 +195,20 @@ func validateEntity(c *gin.Context, entityType string, entityID, userID uint) bo
 			return false
 		}
 	case "fish":
-		var fish models.FishCaught
-		if err := database.DB.Where("fish_id = ?", entityID).First(&fish).Error; err != nil {
+		fish, err := dao.GetFishCaughtByFishID(entityID)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "Missing or invalid fish_id"})
 			return false
 		}
 		// 验证鱼属于当前用户的记录
-		var record models.FishingRecord
-		if err := database.DB.Where("record_id = ? AND is_deleted = ?", fish.RecordID, false).First(&record).Error; err != nil || record.UserID != userID {
+		record, err := dao.GetFishingRecordByRecordID(fish.RecordID)
+		if err != nil || record.UserID != userID {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "Permission denied"})
 			return false
 		}
 	case "avatar":
-		var user models.User
-		if err := database.DB.First(&user, entityID).Error; err != nil {
+		user, err := dao.GetUserByID(entityID)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"msg": "Missing or invalid user"})
 			return false
 		}

@@ -12,6 +12,13 @@ type Config struct {
 	DB     DBConfig
 	JWT    JWTConfig
 	Server ServerConfig
+	Redis  RedisConfig
+}
+
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
 }
 
 type DBConfig struct {
@@ -56,6 +63,11 @@ func Load() {
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
 			Mode: getEnv("GIN_MODE", "debug"),
+		},
+		Redis: RedisConfig{
+			Addr:     getEnv("REDIS_ADDR", "127.0.0.1:6379"),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvInt("REDIS_DB", 0),
 		},
 	}
 }
