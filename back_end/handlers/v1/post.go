@@ -14,12 +14,18 @@ import (
 func GetPostList(c *gin.Context) {
 	posts := dao.GetAllPostsV1()
 
+	// 批量查询所有帖子的首张图片
+	postIDs := make([]uint, 0, len(posts))
+	for _, p := range posts {
+		postIDs = append(postIDs, p.PostID)
+	}
+	imageMap := dao.GetFirstImagesByPostIDs(postIDs)
+
 	postsList := make([]gin.H, 0, len(posts))
 	for _, post := range posts {
-		// 获取帖子的第一张图片
 		var imageURL interface{} = nil
-		if url := dao.GetFirstImageByPostID(post.PostID); url != nil {
-			imageURL = *url
+		if url, ok := imageMap[post.PostID]; ok {
+			imageURL = url
 		}
 
 		postsList = append(postsList, gin.H{
@@ -45,11 +51,18 @@ func GetPostSelf(c *gin.Context) {
 
 	posts := dao.GetPostsByUserIDV1(userID)
 
+	// 批量查询所有帖子的首张图片
+	postIDs := make([]uint, 0, len(posts))
+	for _, p := range posts {
+		postIDs = append(postIDs, p.PostID)
+	}
+	imageMap := dao.GetFirstImagesByPostIDs(postIDs)
+
 	postsList := make([]gin.H, 0, len(posts))
 	for _, post := range posts {
 		var imageURL interface{} = nil
-		if url := dao.GetFirstImageByPostID(post.PostID); url != nil {
-			imageURL = *url
+		if url, ok := imageMap[post.PostID]; ok {
+			imageURL = url
 		}
 
 		postsList = append(postsList, gin.H{

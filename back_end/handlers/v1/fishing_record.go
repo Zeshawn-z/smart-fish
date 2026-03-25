@@ -146,16 +146,50 @@ func CreateFishCaught(c *gin.Context) {
 }
 
 // fetchFishingRecords 组装垂钓记录（包含捕获的鱼和图片），兼容 Flask 响应格式
+// 优化：批量查询渔获、鱼图片、IoT 设备，消除 N+1 问题
 func fetchFishingRecords(records []models.FishingRecord) []gin.H {
+	if len(records) == 0 {
+		return []gin.H{}
+	}
+
+	// 1. 收集所有 recordID 和 deviceID
+	recordIDs := make([]uint, 0, len(records))
+	deviceIDSet := map[string]bool{}
+	for _, r := range records {
+		recordIDs = append(recordIDs, r.RecordID)
+		if r.DeviceID != "" {
+			deviceIDSet[r.DeviceID] = true
+		}
+	}
+
+	// 2. 批量查询所有渔获
+	fishMap := dao.GetFishCaughtByRecordIDs(recordIDs)
+
+	// 3. 收集所有 fishID，批量查询鱼图片
+	var allFishIDs []uint
+	for _, fishes := range fishMap {
+		for _, f := range fishes {
+			allFishIDs = append(allFishIDs, f.FishID)
+		}
+	}
+	fishImageMap := dao.GetImagesByFishIDs(allFishIDs)
+
+	// 4. 批量查询 IoT 设备
+	deviceIDs := make([]string, 0, len(deviceIDSet))
+	for did := range deviceIDSet {
+		deviceIDs = append(deviceIDs, did)
+	}
+	deviceMap := dao.GetIoTDevicesByDeviceIDs(deviceIDs)
+
+	// 5. 组装结果
 	result := make([]gin.H, 0, len(records))
 	for _, record := range records {
-		fishes := dao.GetFishCaughtByRecordID(record.RecordID)
-
+		fishes := fishMap[record.RecordID]
 		caught := make([]gin.H, 0, len(fishes))
 		for _, f := range fishes {
 			var imageURL interface{} = nil
-			if url := dao.GetImageByFishID(f.FishID); url != nil {
-				imageURL = *url
+			if url, ok := fishImageMap[f.FishID]; ok {
+				imageURL = url
 			}
 
 			caught = append(caught, gin.H{
@@ -184,7 +218,7 @@ func fetchFishingRecords(records []models.FishingRecord) []gin.H {
 
 		// 如果关联了 IoT 设备，附带最新设备数据
 		if record.DeviceID != "" {
-			if device, err := dao.GetIoTDeviceByDeviceID(record.DeviceID); err == nil {
+			if device, ok := deviceMap[record.DeviceID]; ok {
 				item["device_data"] = gin.H{
 					"device_id":   device.DeviceID,
 					"temperature": device.Temperature,

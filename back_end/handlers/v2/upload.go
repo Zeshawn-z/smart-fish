@@ -86,21 +86,23 @@ func UploadEnvironmentData(c *gin.Context) {
 		return
 	}
 
-	services.InvalidateRegionEnvCache()
+	// 缓存失效 + 设备状态更新异步执行，不阻塞响应
+	go func() {
+		services.InvalidateRegionEnvCache()
 
-	// 同时更新关联设备的最新传感器数据
-	spot, err := dao.GetFishingSpotByIDRaw(input.SpotID)
-	if err == nil && spot.BoundDeviceID != nil {
-		now := time.Now()
-		dao.UpdateDeviceFields(*spot.BoundDeviceID, map[string]interface{}{
-			"water_temp":     input.WaterTemp,
-			"air_temp":       input.AirTemp,
-			"humidity":       input.Humidity,
-			"pressure":       input.Pressure,
-			"last_active_at": &now,
-			"status":         "online",
-		})
-	}
+		spot, err := dao.GetFishingSpotByIDRaw(input.SpotID)
+		if err == nil && spot.BoundDeviceID != nil {
+			now := time.Now()
+			dao.UpdateDeviceFields(*spot.BoundDeviceID, map[string]interface{}{
+				"water_temp":     input.WaterTemp,
+				"air_temp":       input.AirTemp,
+				"humidity":       input.Humidity,
+				"pressure":       input.Pressure,
+				"last_active_at": &now,
+				"status":         "online",
+			})
+		}
+	}()
 
 	c.JSON(http.StatusCreated, gin.H{"message": "上传成功", "data": data})
 }

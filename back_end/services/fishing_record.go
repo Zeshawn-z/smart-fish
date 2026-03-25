@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"smart-fish/back_end/cache"
@@ -75,7 +76,7 @@ func FishCaughtToDTO(f models.FishCaught) FishCaughtDTO {
 	return dto
 }
 
-// FishingRecordToDTO 将垂钓记录模型转换为 DTO
+// FishingRecordToDTO 将垂钓记录模型转换为 DTO（并发查询关联数据）
 func FishingRecordToDTO(r models.FishingRecord) FishingRecordDTO {
 	now := time.Now().Format(time.RFC3339)
 	dto := FishingRecordDTO{
@@ -90,27 +91,67 @@ func FishingRecordToDTO(r models.FishingRecord) FishingRecordDTO {
 		Longitude: r.Longitude,
 	}
 
-	// 加载渔获
-	fishes := dao.GetFishCaughtByRecordID(r.RecordID)
+	// 渔获查询和设备查询互相独立，并发执行
+	var (
+		fishes []models.FishCaught
+		device *models.IoTDevice
+		wg     sync.WaitGroup
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		fishes = dao.GetFishCaughtByRecordID(r.RecordID)
+	}()
+
+	if r.DeviceID != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			device, _ = dao.GetIoTDeviceByDeviceID(r.DeviceID)
+		}()
+	}
+	wg.Wait()
+
+	// 批量查询所有鱼的图片（替代逐条 GetImageByFishID）
+	fishIDs := make([]uint, 0, len(fishes))
+	for _, f := range fishes {
+		fishIDs = append(fishIDs, f.FishID)
+	}
+	fishImageMap := dao.GetImagesByFishIDs(fishIDs)
+
+	// 组装渔获 DTO
 	dto.FishCaught = make([]FishCaughtDTO, 0, len(fishes))
 	for _, f := range fishes {
-		dto.FishCaught = append(dto.FishCaught, FishCaughtToDTO(f))
+		fdto := FishCaughtDTO{
+			ID:           f.FishID,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			RecordID:     f.RecordID,
+			CaughtTime:   f.CaughtTime,
+			FishType:     f.FishType,
+			Weight:       f.Weight,
+			BaitType:     f.BaitType,
+			BaitWeight:   f.BaitWeight,
+			FishingDepth: f.FishingDepth,
+		}
+		if url, ok := fishImageMap[f.FishID]; ok {
+			fdto.ImageURL = &url
+		}
+		dto.FishCaught = append(dto.FishCaught, fdto)
 	}
 
-	// 加载 IoT 设备数据
-	if r.DeviceID != "" {
-		device, err := dao.GetIoTDeviceByDeviceID(r.DeviceID)
-		if err == nil {
-			dto.DeviceData = &IoTDeviceDTO{
-				DeviceID:    device.DeviceID,
-				Temperature: device.Temperature,
-				Humidity:    device.Humidity,
-				Pulling:     device.Pulling,
-				Pressure:    device.Pressure,
-				GpsInfo:     device.GpsInfo,
-				ImuData:     device.ImuData,
-				LastUpdate:  device.LastUpdate,
-			}
+	// 设备数据
+	if device != nil {
+		dto.DeviceData = &IoTDeviceDTO{
+			DeviceID:    device.DeviceID,
+			Temperature: device.Temperature,
+			Humidity:    device.Humidity,
+			Pulling:     device.Pulling,
+			Pressure:    device.Pressure,
+			GpsInfo:     device.GpsInfo,
+			ImuData:     device.ImuData,
+			LastUpdate:  device.LastUpdate,
 		}
 	}
 
@@ -143,7 +184,7 @@ type FishingStatsResult struct {
 	FishTypes  []dao.FishTypeCount `json:"fish_types"`
 }
 
-// GetMyFishingStats 获取用户垂钓统计（带缓存）
+// GetMyFishingStats 获取用户垂钓统计（带缓存 + 并发查询）
 func GetMyFishingStats(userID uint) FishingStatsResult {
 	// 尝试从缓存获取
 	cacheKey := fmt.Sprintf(cache.KeyFishingStats, userID)
@@ -152,10 +193,21 @@ func GetMyFishingStats(userID uint) FishingStatsResult {
 		return cached
 	}
 
-	totalTrips := dao.CountFishingRecordsByUser(userID)
-	fishAgg := dao.GetFishAggByUser(userID)
-	durAgg := dao.GetDurationAggByUser(userID)
-	fishTypes := dao.GetFishTypeCountsByUser(userID, 5)
+	// 4 个聚合查询完全独立，并发执行
+	var (
+		totalTrips int64
+		fishAgg    dao.FishAgg
+		durAgg     dao.DurationAgg
+		fishTypes  []dao.FishTypeCount
+		wg         sync.WaitGroup
+	)
+
+	wg.Add(4)
+	go func() { defer wg.Done(); totalTrips = dao.CountFishingRecordsByUser(userID) }()
+	go func() { defer wg.Done(); fishAgg = dao.GetFishAggByUser(userID) }()
+	go func() { defer wg.Done(); durAgg = dao.GetDurationAggByUser(userID) }()
+	go func() { defer wg.Done(); fishTypes = dao.GetFishTypeCountsByUser(userID, 5) }()
+	wg.Wait()
 
 	result := FishingStatsResult{
 		TotalTrips: totalTrips,

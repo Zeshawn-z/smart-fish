@@ -17,7 +17,7 @@ import (
 // ListPosts GET /api/posts - 帖子列表（分页）
 func ListPosts(c *gin.Context) {
 	query := dao.ListPostsQuery(c.Query("tag"), c.Query("search"), c.Query("user_id"))
-	utils.PaginateMap[models.Post, services.PostDTO](c, query, "post_id DESC", services.PostToDTO)
+	utils.PaginateMapConcurrent[models.Post, services.PostDTO](c, query, "post_id DESC", services.PostToDTO)
 }
 
 // GetPostByID GET /api/posts/:id - 帖子详情（含完整评论数据）
@@ -67,7 +67,7 @@ func CreatePostV2(c *gin.Context) {
 		return
 	}
 
-	services.InvalidatePostCache(post.PostID)
+	go services.InvalidatePostCache(post.PostID)
 	c.JSON(http.StatusCreated, services.PostToDTO(post))
 }
 
@@ -122,7 +122,7 @@ func UpdatePostV2(c *gin.Context) {
 	}
 
 	dao.RefreshPost(post, id)
-	services.InvalidatePostCache(post.PostID)
+	go services.InvalidatePostCache(post.PostID)
 	c.JSON(http.StatusOK, services.PostToDTO(*post))
 }
 
@@ -152,7 +152,7 @@ func DeletePostV2(c *gin.Context) {
 	}
 
 	dao.SoftDeletePost(post)
-	services.InvalidatePostCache(post.PostID)
+	go services.InvalidatePostCache(post.PostID)
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
 }
 
@@ -161,7 +161,7 @@ func DeletePostV2(c *gin.Context) {
 // ListComments GET /api/comments - 评论列表（支持分页）
 func ListComments(c *gin.Context) {
 	query := dao.ListCommentsQuery(c.Query("post_id"))
-	utils.PaginateMap[models.Comment, services.CommentDTO](c, query, "comment_id ASC", services.CommentToDTO)
+	utils.PaginateMapConcurrent[models.Comment, services.CommentDTO](c, query, "comment_id ASC", services.CommentToDTO)
 }
 
 // GetComment GET /api/comments/:id
@@ -274,7 +274,7 @@ func LikePost(c *gin.Context) {
 	}
 
 	dao.CreatePostLike(&models.LikeOnPosts{PostID: post.PostID, UserID: userID.(uint)})
-	services.InvalidatePostLikesCache(post.PostID)
+	go services.InvalidatePostLikesCache(post.PostID)
 	c.JSON(http.StatusCreated, gin.H{"message": "点赞成功"})
 }
 
@@ -294,7 +294,7 @@ func UnlikePost(c *gin.Context) {
 
 	affected := dao.DeletePostLike(uint(id), userID.(uint))
 	if affected > 0 {
-		services.InvalidatePostLikesCache(uint(id))
+		go services.InvalidatePostLikesCache(uint(id))
 		c.JSON(http.StatusOK, gin.H{"message": "取消点赞成功"})
 	} else {
 		c.JSON(http.StatusNotFound, gin.H{"error": "未找到点赞记录"})

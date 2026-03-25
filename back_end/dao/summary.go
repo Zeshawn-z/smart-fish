@@ -1,6 +1,8 @@
 package dao
 
 import (
+	"sync"
+
 	"smart-fish/back_end/database"
 	"smart-fish/back_end/models"
 )
@@ -21,32 +23,64 @@ type SummaryData struct {
 	AvgAirTemp        float64
 }
 
-// GetSummaryData 获取系统概览统计数据
+// GetSummaryData 获取系统概览统计数据（并发查询）
 func GetSummaryData() SummaryData {
 	var data SummaryData
+	var wg sync.WaitGroup
 
-	database.DB.Model(&models.FishingSpot{}).Count(&data.TotalSpots)
-	database.DB.Model(&models.FishingSpot{}).Where("status = ?", "open").Count(&data.OpenSpots)
+	// 10 个独立查询并发执行
+	wg.Add(10)
 
-	database.DB.Model(&models.Device{}).Count(&data.TotalDevices)
-	database.DB.Model(&models.Device{}).Where("status = ?", "online").Count(&data.OnlineDevices)
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.FishingSpot{}).Count(&data.TotalSpots)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.FishingSpot{}).Where("status = ?", "open").Count(&data.OpenSpots)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.Device{}).Count(&data.TotalDevices)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.Device{}).Where("status = ?", "online").Count(&data.OnlineDevices)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.Gateway{}).Count(&data.TotalGateways)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.Gateway{}).Where("status = ?", "online").Count(&data.OnlineGateways)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.User{}).Count(&data.TotalUsers)
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.Reminder{}).Where("resolved = ?", false).Count(&data.ActiveReminders)
+	}()
+	go func() {
+		defer wg.Done()
+		var totalFishing struct{ Total int }
+		database.DB.Model(&models.Device{}).
+			Select("COALESCE(SUM(devices.fishing_count), 0) as total").
+			Joins("INNER JOIN fishing_spots ON fishing_spots.bound_device_id = devices.id").
+			Where("devices.status = ?", "online").
+			Scan(&totalFishing)
+		data.TotalFishingCount = totalFishing.Total
+	}()
+	go func() {
+		defer wg.Done()
+		database.DB.Model(&models.Notice{}).Where("outdated = ?", false).Count(&data.RecentNotices)
+	}()
 
-	database.DB.Model(&models.Gateway{}).Count(&data.TotalGateways)
-	database.DB.Model(&models.Gateway{}).Where("status = ?", "online").Count(&data.OnlineGateways)
+	wg.Wait()
 
-	database.DB.Model(&models.User{}).Count(&data.TotalUsers)
-	database.DB.Model(&models.Reminder{}).Where("resolved = ?", false).Count(&data.ActiveReminders)
-
-	var totalFishing struct{ Total int }
-	database.DB.Model(&models.Device{}).
-		Select("COALESCE(SUM(devices.fishing_count), 0) as total").
-		Joins("INNER JOIN fishing_spots ON fishing_spots.bound_device_id = devices.id").
-		Where("devices.status = ?", "online").
-		Scan(&totalFishing)
-	data.TotalFishingCount = totalFishing.Total
-
-	database.DB.Model(&models.Notice{}).Where("outdated = ?", false).Count(&data.RecentNotices)
-
+	// 温度聚合查询（单次查询，不需要并发）
 	var avgTemps struct {
 		AvgWater float64
 		AvgAir   float64

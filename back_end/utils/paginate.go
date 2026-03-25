@@ -4,6 +4,7 @@ package utils
 import (
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -88,6 +89,42 @@ func PaginateMap[T any, D any](c *gin.Context, query *gorm.DB, orderExpr string,
 	for _, item := range items {
 		dtos = append(dtos, transform(item))
 	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"results":   dtos,
+		"total":     total,
+		"page":      pp.Page,
+		"page_size": pp.PageSize,
+	})
+}
+
+// PaginateMapConcurrent 与 PaginateMap 行为完全一致，但使用 goroutine
+// 并发执行 transform。适用于 transform 内部有 I/O 操作的场景（如 PostToDTO）。
+// 结果顺序与原始 items 顺序保持一致。
+func PaginateMapConcurrent[T any, D any](c *gin.Context, query *gorm.DB, orderExpr string, transform func(T) D, defaultSize ...int) {
+	pp := ParsePage(c, defaultSize...)
+
+	var total int64
+	query.Count(&total)
+
+	var items []T
+	q := query.Offset((pp.Page - 1) * pp.PageSize).Limit(pp.PageSize)
+	if orderExpr != "" {
+		q = q.Order(orderExpr)
+	}
+	q.Find(&items)
+
+	// 并发执行 transform，使用索引保证结果顺序
+	dtos := make([]D, len(items))
+	var wg sync.WaitGroup
+	wg.Add(len(items))
+	for i, item := range items {
+		go func(idx int, it T) {
+			defer wg.Done()
+			dtos[idx] = transform(it)
+		}(i, item)
+	}
+	wg.Wait()
 
 	c.JSON(http.StatusOK, gin.H{
 		"results":   dtos,
