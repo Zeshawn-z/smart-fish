@@ -30,6 +30,9 @@
         <el-menu-item index="/community">
           <el-icon><ChatDotRound /></el-icon> 钓友社区
         </el-menu-item>
+        <el-menu-item index="/agent">
+          <el-icon><Monitor /></el-icon> 智能助手
+        </el-menu-item>
         <el-menu-item index="/dashboard">
           <el-icon><DataLine /></el-icon> 数据大屏
         </el-menu-item>
@@ -111,6 +114,9 @@
         <div class="drawer-item" :class="{ active: activeMenu === '/community' }" @click="navigateMobile('/community')">
           <el-icon><ChatDotRound /></el-icon> <span>钓友社区</span>
         </div>
+        <div class="drawer-item" :class="{ active: activeMenu === '/agent' }" @click="navigateMobile('/agent')">
+          <el-icon><Monitor /></el-icon> <span>智能助手</span>
+        </div>
         <div class="drawer-item" :class="{ active: activeMenu === '/dashboard' }" @click="navigateMobile('/dashboard')">
           <el-icon><DataLine /></el-icon> <span>数据大屏</span>
         </div>
@@ -153,7 +159,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useAvatar } from '@/composables/useAvatar'
 import {
   Ship, User, SwitchButton, HomeFilled, MapLocation,
-  Bell, Setting, ArrowDown, Menu, ChatDotRound, DataLine
+  Bell, Setting, ArrowDown, Menu, ChatDotRound, DataLine, Monitor
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
