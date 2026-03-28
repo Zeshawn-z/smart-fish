@@ -83,10 +83,10 @@ func GetFirstImagesByPostIDs(postIDs []uint) map[uint]string {
 	var images []postImage
 	database.DB.Model(&models.Image{}).
 		Select("post_id, image_url").
-		Where("post_id IN ? AND is_deleted = ? AND id IN (?)",
+		Where("post_id IN ? AND is_deleted = ? AND image_id IN (?)",
 			postIDs, false,
 			database.DB.Model(&models.Image{}).
-				Select("MIN(id)").
+				Select("MIN(image_id)").
 				Where("post_id IN ? AND is_deleted = ?", postIDs, false).
 				Group("post_id"),
 		).
