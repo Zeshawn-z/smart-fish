@@ -55,6 +55,12 @@ const router = createRouter({
       meta: { title: '管理后台', requiresAuth: true, requiresStaff: true, hideFooter: true }
     },
     {
+      path: '/agent',
+      name: 'Agent',
+      component: () => import('@/views/agent/AgentChatView.vue'),
+      meta: { title: '智能助手', hideFooter: true }
+    },
+    {
       path: '/dashboard',
       name: 'Dashboard',
       component: () => import('@/views/DashboardView.vue'),
