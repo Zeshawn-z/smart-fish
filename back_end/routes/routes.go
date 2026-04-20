@@ -289,6 +289,9 @@ func Setup(r *gin.Engine, frontendFS *embed.FS) {
 		// --- 天气 ---
 		apiv1.GET("/getWeather", v1.GetWeather)
 
+		// --- YOLO 鱼类识别（Flask 兼容） ---
+		apiv1.POST("/yolo", v1.GetClassification)
+
 		// --- IoT 设备 ---
 		apiv1.POST("/iot", v1.PostIoTData)
 		apiv1.GET("/iot/:device_id", v1.GetIoTData)
