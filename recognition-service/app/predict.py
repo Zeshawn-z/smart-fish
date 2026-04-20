@@ -41,7 +41,7 @@ def get_model_version() -> str:
 
 def predict_type_confidence(image_data: bytes) -> Dict[str, float]:
     try:
-        image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        image = Image.open(io.BytesIO(image_data))
         model = get_model()
         results = model.predict(source=image, save=False, show=False, verbose=False)
 
@@ -52,19 +52,19 @@ def predict_type_confidence(image_data: bytes) -> Dict[str, float]:
         if probs is None:
             return {}
 
-        top5 = list(getattr(probs, "top5", []) or [])[:5]
-        top5conf = list(getattr(probs, "top5conf", []) or [])[:5]
-
-        if not top5 or not top5conf:
+        top5_raw = getattr(probs, "top5", None)
+        top5conf_raw = getattr(probs, "top5conf", None)
+        if top5_raw is None or top5conf_raw is None:
             return {}
 
         type_confidence: Dict[str, float] = {}
-        for label_idx, confidence in zip(top5, top5conf):
-            label_int = int(label_idx)
-            english_name = results[0].names.get(label_int, str(label_int))
-            fish_type = FISH_DICT.get(english_name, english_name)
-            conf_value = float(confidence.item() if hasattr(confidence, "item") else confidence)
-            type_confidence[fish_type] = conf_value
+        for i in range(5):
+            label = int(top5_raw[i])
+            fish_type = results[0].names[label]
+            confidence = top5conf_raw[i]
+            type_confidence[FISH_DICT.get(fish_type)] = float(
+                confidence.item() if hasattr(confidence, "item") else confidence
+            )
 
         return type_confidence
     except Exception:
