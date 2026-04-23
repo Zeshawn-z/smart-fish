@@ -117,7 +117,11 @@ async function loadGeoJSON(adcode: string): Promise<any> {
   const url = adcode === '100000'
     ? 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json'
     : `https://geo.datav.aliyun.com/areas_v3/bound/${adcode}_full.json`
-  const resp = await fetch(url)
+  const resp = await fetch(url, {
+    method: 'GET',
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer'
+  })
   const data = await resp.json()
   geoCache.set(adcode, data)
   return data
